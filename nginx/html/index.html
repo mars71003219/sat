@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Inference Dashboard</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #0f172a;
+            color: #e2e8f0;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            text-align: center;
+            margin-bottom: 30px;
+            color: #60a5fa;
+            font-size: 2.5em;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .stat-card {
+            background: #1e293b;
+            padding: 20px;
+            border-radius: 10px;
+            border: 1px solid #334155;
+        }
+
+        .stat-card h3 {
+            font-size: 0.9em;
+            color: #94a3b8;
+            margin-bottom: 10px;
+            text-transform: uppercase;
+        }
+
+        .stat-card .value {
+            font-size: 2em;
+            font-weight: bold;
+            color: #60a5fa;
+        }
+
+        .stat-card.success .value {
+            color: #34d399;
+        }
+
+        .stat-card.error .value {
+            color: #f87171;
+        }
+
+        .results-section {
+            background: #1e293b;
+            padding: 20px;
+            border-radius: 10px;
+            border: 1px solid #334155;
+            margin-bottom: 20px;
+        }
+
+        .results-section h2 {
+            margin-bottom: 20px;
+            color: #60a5fa;
+        }
+
+        .results-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .results-table th {
+            background: #334155;
+            padding: 12px;
+            text-align: left;
+            font-weight: 600;
+            border-bottom: 2px solid #475569;
+        }
+
+        .results-table td {
+            padding: 12px;
+            border-bottom: 1px solid #334155;
+        }
+
+        .results-table tr:hover {
+            background: #334155;
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 0.85em;
+            font-weight: 600;
+        }
+
+        .status-badge.completed {
+            background: #065f46;
+            color: #34d399;
+        }
+
+        .status-badge.failed {
+            background: #7f1d1d;
+            color: #f87171;
+        }
+
+        .status-badge.pending {
+            background: #713f12;
+            color: #fbbf24;
+        }
+
+        .model-badge {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-size: 0.8em;
+            background: #1e40af;
+            color: #93c5fd;
+        }
+
+        .predictions {
+            font-family: 'Courier New', monospace;
+            font-size: 0.85em;
+            color: #94a3b8;
+        }
+
+        .timestamp {
+            color: #64748b;
+            font-size: 0.85em;
+        }
+
+        .connection-status {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 10px 20px;
+            border-radius: 20px;
+            font-size: 0.9em;
+            font-weight: 600;
+        }
+
+        .connection-status.connected {
+            background: #065f46;
+            color: #34d399;
+        }
+
+        .connection-status.disconnected {
+            background: #7f1d1d;
+            color: #f87171;
+        }
+
+        .chart-container {
+            background: #1e293b;
+            padding: 20px;
+            border-radius: 10px;
+            border: 1px solid #334155;
+            margin-bottom: 20px;
+            height: 300px;
+        }
+
+        @keyframes pulse {
+            0%, 100% {
+                opacity: 1;
+            }
+            50% {
+                opacity: 0.5;
+            }
+        }
+
+        .pulse {
+            animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>AI Inference Dashboard</h1>
+
+        <div class="connection-status disconnected" id="connectionStatus">
+            [DISCONNECTED]
+        </div>
+
+        <div class="stats-grid">
+            <div class="stat-card">
+                <h3>Total Jobs</h3>
+                <div class="value" id="totalJobs">0</div>
+            </div>
+            <div class="stat-card success">
+                <h3>Completed</h3>
+                <div class="value" id="completedJobs">0</div>
+            </div>
+            <div class="stat-card error">
+                <h3>Failed</h3>
+                <div class="value" id="failedJobs">0</div>
+            </div>
+            <div class="stat-card">
+                <h3>Success Rate</h3>
+                <div class="value" id="successRate">0%</div>
+            </div>
+            <div class="stat-card">
+                <h3>Throughput</h3>
+                <div class="value" id="throughput">0 /min</div>
+            </div>
+        </div>
+
+        <div class="results-section">
+            <h2>Recent Inference Results</h2>
+            <table class="results-table">
+                <thead>
+                    <tr>
+                        <th>Time</th>
+                        <th>Job ID</th>
+                        <th>Model</th>
+                        <th>Pattern</th>
+                        <th>Status</th>
+                        <th>Predictions</th>
+                        <th>Inference Time</th>
+                    </tr>
+                </thead>
+                <tbody id="resultsBody">
+                    <tr>
+                        <td colspan="7" style="text-align: center; padding: 40px;">
+                            <span class="pulse">Loading...</span>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        let ws = null;
+        let reconnectInterval = null;
+
+        function connectWebSocket() {
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${protocol}//${window.location.host}/api/v1/dashboard/ws`;
+
+            console.log('Connecting to:', wsUrl);
+            ws = new WebSocket(wsUrl);
+
+            ws.onopen = () => {
+                console.log('WebSocket connected');
+                document.getElementById('connectionStatus').className = 'connection-status connected';
+                document.getElementById('connectionStatus').textContent = '[CONNECTED]';
+
+                if (reconnectInterval) {
+                    clearInterval(reconnectInterval);
+                    reconnectInterval = null;
+                }
+            };
+
+            ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                console.log('Received:', data);
+
+                if (data.type === 'update') {
+                    updateDashboard(data);
+                }
+            };
+
+            ws.onerror = (error) => {
+                console.error('WebSocket error:', error);
+            };
+
+            ws.onclose = () => {
+                console.log('WebSocket disconnected');
+                document.getElementById('connectionStatus').className = 'connection-status disconnected';
+                document.getElementById('connectionStatus').textContent = '[DISCONNECTED]';
+
+                // 재연결 시도
+                if (!reconnectInterval) {
+                    reconnectInterval = setInterval(() => {
+                        console.log('Attempting to reconnect...');
+                        connectWebSocket();
+                    }, 5000);
+                }
+            };
+        }
+
+        function updateDashboard(data) {
+            // 통계 업데이트
+            if (data.statistics) {
+                const stats = data.statistics;
+                document.getElementById('totalJobs').textContent = stats.total_jobs || 0;
+                document.getElementById('completedJobs').textContent = stats.completed || 0;
+                document.getElementById('failedJobs').textContent = stats.failed || 0;
+                document.getElementById('successRate').textContent = (stats.success_rate || 0).toFixed(1) + '%';
+                document.getElementById('throughput').textContent = (stats.throughput_per_minute || 0) + ' /min';
+            }
+
+            // 최근 결과 업데이트
+            if (data.recent_results) {
+                const tbody = document.getElementById('resultsBody');
+                tbody.innerHTML = '';
+
+                if (data.recent_results.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; padding: 40px;">No results yet</td></tr>';
+                    return;
+                }
+
+                data.recent_results.forEach(result => {
+                    const row = document.createElement('tr');
+
+                    const createdAt = new Date(result.created_at);
+                    const timeStr = createdAt.toLocaleTimeString('ko-KR');
+
+                    const metadata = typeof result.metadata === 'string' ? JSON.parse(result.metadata) : result.metadata;
+                    const pattern = metadata?.pattern || 'unknown';
+
+                    const predictions = typeof result.predictions === 'string' ? JSON.parse(result.predictions) : result.predictions;
+                    const predictionsStr = Array.isArray(predictions) ?
+                        predictions.slice(0, 3).map(p => p.toFixed(2)).join(', ') + '...' :
+                        'N/A';
+
+                    const metrics = typeof result.metrics === 'string' ? JSON.parse(result.metrics) : result.metrics;
+                    const inferenceTime = metrics?.inference_time ?
+                        (metrics.inference_time * 1000).toFixed(1) + 'ms' :
+                        'N/A';
+
+                    row.innerHTML = `
+                        <td class="timestamp">${timeStr}</td>
+                        <td><code>${result.job_id.substring(0, 8)}</code></td>
+                        <td><span class="model-badge">${result.model_name}</span></td>
+                        <td>${pattern}</td>
+                        <td><span class="status-badge ${result.status}">${result.status}</span></td>
+                        <td class="predictions">[${predictionsStr}]</td>
+                        <td>${inferenceTime}</td>
+                    `;
+
+                    tbody.appendChild(row);
+                });
+            }
+        }
+
+        // 초기 연결
+        connectWebSocket();
+
+        // 페이지 언로드 시 WebSocket 정리
+        window.addEventListener('beforeunload', () => {
+            if (ws) {
+                ws.close();
+            }
+        });
+    </script>
+</body>
+</html>

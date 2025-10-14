@@ -1,0 +1,217 @@
+services:
+  # --------------------------------------------------------------------
+  # 기본 인프라 서비스
+  # --------------------------------------------------------------------
+
+  kafka:
+    image: confluentinc/cp-kafka:latest
+    container_name: kafka
+    ports:
+      - "9092:9092"
+    networks:
+      - webnet
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: 'broker,controller'
+      KAFKA_CONTROLLER_QUORUM_VOTERS: '1@kafka:9093'
+      CLUSTER_ID: '${KAFKA_CLUSTER_ID}'
+      KAFKA_LISTENERS: 'PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093'
+      KAFKA_ADVERTISED_LISTENERS: 'PLAINTEXT://kafka:9092'
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: 'CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT'
+      KAFKA_INTER_BROKER_LISTENER_NAME: 'PLAINTEXT'
+      KAFKA_CONTROLLER_LISTENER_NAMES: 'CONTROLLER'
+      KAFKA_LOG_DIRS: '/var/lib/kafka/data'
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'true'
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+    command: >
+      bash -c "
+      if [ ! -f /var/lib/kafka/data/meta.properties ]; then
+        kafka-storage format -t ${KAFKA_CLUSTER_ID} -c /etc/kafka/kraft/server.properties;
+      fi;
+      /etc/confluent/docker/run
+      "
+
+  redis:
+    image: redis/redis-stack:latest
+    container_name: redis
+    ports:
+      - "6379:6379"
+      - "8001:8001"
+    networks:
+      - webnet
+
+  postgres:
+    image: postgres:latest
+    container_name: postgres
+    environment:
+      - POSTGRES_USER=admin
+      - POSTGRES_PASSWORD=admin123
+      - POSTGRES_DB=orders_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./shared/database:/docker-entrypoint-initdb.d
+    networks:
+      - webnet
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.5.0
+    container_name: elasticsearch
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    ports:
+      - "9200:9200"
+    volumes:
+      - es_data:/usr/share/elasticsearch/data
+    networks:
+      - webnet
+
+  # --------------------------------------------------------------------
+  # 모니터링 UI
+  # --------------------------------------------------------------------
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: kafka-ui
+    ports:
+      - "8080:8080"
+    environment:
+      - KAFKA_CLUSTERS_0_NAME=local
+      - KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS=kafka:9092
+    depends_on:
+      - kafka
+    networks:
+      - webnet
+
+  # --------------------------------------------------------------------
+  # 운영서버 (Operation Server) - Celery Producer + API
+  # --------------------------------------------------------------------
+  operation-server:
+    build:
+      context: .
+      dockerfile: operation-server/Dockerfile
+    container_name: operation-server
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./operation-server:/app/operation-server
+      - ./shared:/app/shared
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=admin
+      - POSTGRES_PASSWORD=admin123
+      - POSTGRES_DB=orders_db
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - CELERY_BROKER_URL=redis://redis:6379/1
+      - CELERY_RESULT_BACKEND=redis://redis:6379/2
+      - ELASTICSEARCH_URL=http://elasticsearch:9200
+    depends_on:
+      - redis
+      - postgres
+      - kafka
+      - elasticsearch
+    networks:
+      - webnet
+
+  # --------------------------------------------------------------------
+  # 분석서버 (Analysis Server) - Celery Consumer + GPU
+  # --------------------------------------------------------------------
+  analysis-worker-1:
+    build:
+      context: .
+      dockerfile: analysis-server/Dockerfile
+    container_name: analysis-worker-1
+    command: celery -A tasks worker --loglevel=info --concurrency=2 --queues=inference
+    volumes:
+      - ./analysis-server:/app/analysis-server
+      - ./shared:/app/shared
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=admin
+      - POSTGRES_PASSWORD=admin123
+      - POSTGRES_DB=orders_db
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - CELERY_BROKER_URL=redis://redis:6379/1
+      - CELERY_RESULT_BACKEND=redis://redis:6379/2
+      - CUDA_VISIBLE_DEVICES=0
+    depends_on:
+      - redis
+      - postgres
+      - kafka
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    networks:
+      - webnet
+
+  # --------------------------------------------------------------------
+  # Celery 모니터링
+  # --------------------------------------------------------------------
+  flower:
+    build:
+      context: .
+      dockerfile: operation-server/Dockerfile
+    container_name: flower
+    command: celery -A celery_tasks.client flower --port=5555
+    ports:
+      - "5555:5555"
+    volumes:
+      - ./operation-server:/app/operation-server
+      - ./shared:/app/shared
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379/1
+      - CELERY_RESULT_BACKEND=redis://redis:6379/2
+    depends_on:
+      - redis
+    networks:
+      - webnet
+
+  # --------------------------------------------------------------------
+  # 웹 서비스 (Nginx + React)
+  # --------------------------------------------------------------------
+  frontend:
+    image: satlas-ui:latest
+    container_name: web_frontend
+    volumes:
+      - ./frontend/src:/app/src
+    networks:
+      - webnet
+
+  nginx:
+    container_name: web_server
+    image: nginx:alpine
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./nginx/html:/usr/share/nginx/html:ro
+    depends_on:
+      - frontend
+      - operation-server
+    networks:
+      - webnet
+
+volumes:
+  kafka_data:
+  postgres_data:
+  es_data:
+
+networks:
+  webnet:
+    driver: bridge
