@@ -1,0 +1,52 @@
+name: "moving_average"
+backend: "python"
+max_batch_size: 64
+
+# 입력 정의
+input [
+  {
+    name: "INPUT"
+    data_type: TYPE_FP32
+    dims: [ -1 ]  # [sequence_length] - 가변 길이 시계열
+  }
+]
+
+# 출력 정의
+output [
+  {
+    name: "OUTPUT"
+    data_type: TYPE_FP32
+    dims: [ -1 ]  # [forecast_steps]
+  }
+]
+
+# Dynamic Batching 설정
+dynamic_batching {
+  preferred_batch_size: [ 8, 16, 32, 64 ]
+  max_queue_delay_microseconds: 50000  # 50ms (경량 모델이므로 짧게)
+}
+
+# 모델 인스턴스 설정
+instance_group [
+  {
+    count: 2  # GPU에서 2개의 모델 인스턴스 실행 (경량 모델)
+    kind: KIND_GPU
+    gpus: [ 0 ]  # GPU 0 사용
+  }
+]
+
+# 모델 파라미터
+parameters [
+  {
+    key: "window_size"
+    value: { string_value: "5" }
+  },
+  {
+    key: "forecast_steps"
+    value: { string_value: "5" }
+  },
+  {
+    key: "include_trend"
+    value: { string_value: "true" }
+  }
+]

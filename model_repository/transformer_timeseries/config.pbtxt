@@ -1,0 +1,80 @@
+name: "transformer_timeseries"
+backend: "python"
+max_batch_size: 64
+
+# 입력 정의
+input [
+  {
+    name: "INPUT"
+    data_type: TYPE_FP32
+    dims: [ 20, 1 ]
+  }
+]
+
+# 출력 정의
+output [
+  {
+    name: "OUTPUT"
+    data_type: TYPE_FP32
+    dims: [ 10 ]
+  }
+]
+
+# Dynamic Batching 설정
+dynamic_batching {
+  preferred_batch_size: [ 4, 8, 16, 32 ]
+  max_queue_delay_microseconds: 100000
+}
+
+# 인스턴스 설정 - GPU 사용
+instance_group [
+  {
+    count: 2
+    kind: KIND_GPU
+    gpus: [ 0 ]
+  }
+]
+
+# 파라미터 (선택사항)
+parameters: {
+  key: "sequence_length"
+  value: {
+    string_value: "20"
+  }
+}
+parameters: {
+  key: "forecast_steps"
+  value: {
+    string_value: "10"
+  }
+}
+parameters: {
+  key: "d_model"
+  value: {
+    string_value: "64"
+  }
+}
+parameters: {
+  key: "nhead"
+  value: {
+    string_value: "4"
+  }
+}
+parameters: {
+  key: "num_layers"
+  value: {
+    string_value: "3"
+  }
+}
+parameters: {
+  key: "dim_feedforward"
+  value: {
+    string_value: "256"
+  }
+}
+parameters: {
+  key: "dropout"
+  value: {
+    string_value: "0.1"
+  }
+}

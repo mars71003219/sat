@@ -1,0 +1,56 @@
+name: "lstm_timeseries"
+backend: "python"
+max_batch_size: 32
+
+# 입력 정의
+input [
+  {
+    name: "INPUT"
+    data_type: TYPE_FP32
+    dims: [ -1, 1 ]  # [sequence_length, features]
+  }
+]
+
+# 출력 정의
+output [
+  {
+    name: "OUTPUT"
+    data_type: TYPE_FP32
+    dims: [ -1 ]  # [forecast_steps]
+  }
+]
+
+# Dynamic Batching 설정 (Triton의 핵심 기능!)
+dynamic_batching {
+  preferred_batch_size: [ 4, 8, 16, 32 ]
+  max_queue_delay_microseconds: 100000  # 100ms
+}
+
+# 모델 인스턴스 설정
+instance_group [
+  {
+    count: 1  # GPU에서 1개의 모델 인스턴스 실행
+    kind: KIND_GPU
+    gpus: [ 0 ]  # GPU 0 사용
+  }
+]
+
+# 모델 파라미터 (Python 모델에서 사용)
+parameters [
+  {
+    key: "sequence_length"
+    value: { string_value: "10" }
+  },
+  {
+    key: "forecast_steps"
+    value: { string_value: "5" }
+  },
+  {
+    key: "hidden_size"
+    value: { string_value: "64" }
+  },
+  {
+    key: "num_layers"
+    value: { string_value: "2" }
+  }
+]

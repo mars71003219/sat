@@ -1,3 +1,7 @@
+"""
+Analysis Server - Celery Tasks (Triton Client)
+Triton Inference Server를 사용한 추론 작업
+"""
 from celery import Celery, Task
 import time
 from datetime import datetime
@@ -7,8 +11,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
 from shared.config.settings import settings
 from shared.schemas import JobStatus
-from core.model_loader import model_loader
-from core.batch_manager import batch_manager
+from core.triton_client import triton_client
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -30,58 +33,87 @@ celery_app.conf.update(
     enable_utc=True,
 )
 
-# 모델 등록 (팩토리 패턴)
-from models.timeseries import LSTMTimeSeriesModel, MovingAverageModel
-
-logger.info("Analysis Server: Models registered via factory pattern")
+logger.info("Analysis Server: Using Triton Inference Server")
 
 
 def execute_inference(job_id: str, model_name: str, data: list, config: dict, metadata: dict):
-    """실제 추론 실행 함수"""
+    """
+    Triton을 사용한 추론 실행
+
+    Args:
+        job_id: 작업 ID
+        model_name: 모델 이름 ("lstm_timeseries" 또는 "moving_average")
+        data: 입력 데이터
+        config: 모델 설정
+        metadata: 메타데이터
+
+    Returns:
+        결과 딕셔너리
+    """
     try:
         import redis
         import json
         import psycopg2
         from kafka import KafkaProducer
-        
+
         r = redis.from_url(settings.REDIS_URL, decode_responses=True)
         r.setex(f"job:status:{job_id}", 3600, json.dumps({"status": "running"}))
-        
+
         start_time = time.time()
-        
-        logger.info(f"[Worker] Job {job_id}: Loading model '{model_name}'")
-        model = model_loader.load_model(model_name, config)
-        
-        logger.info(f"[Worker] Job {job_id}: Running inference")
-        results = model.infer(data)
-        
+
+        # ========================================
+        # Triton 추론 실행 (전처리 + 추론 + 후처리 모두 포함)
+        # ========================================
+        logger.info(f"[Worker] Job {job_id}: Calling Triton for model '{model_name}'")
+
+        result = triton_client.infer(
+            model_name=model_name,
+            data=data,
+            config=config
+        )
+
         inference_time = time.time() - start_time
-        
+
+        logger.info(f"[Worker] Job {job_id}: Triton inference completed in {inference_time:.3f}s")
+
+        # ========================================
+        # 결과 데이터 구성
+        # ========================================
         result_data = {
             "job_id": job_id,
             "status": "completed",
             "model_name": model_name,
-            "predictions": results.get("predictions", []),
-            "confidence": results.get("confidence"),
+            "predictions": result.get("predictions", []),
+            "confidence": result.get("confidence"),
             "metrics": {
                 "inference_time": inference_time,
-                **results.get("metrics", {})
+                **result.get("metrics", {})
             },
             "metadata": {
                 **metadata,
-                **results,
-                "processed_by": "analysis_server",
-                "batch_processed": True
+                "processed_by": "triton_server",
+                "triton_client": "grpc"
             },
             "created_at": metadata.get("created_at"),
             "completed_at": datetime.utcnow().isoformat()
         }
-        
-        logger.info(f"[Worker] Job {job_id}: Storing results")
+
+        # upper_bound, lower_bound 추가 (Moving Average의 경우)
+        if "upper_bound" in result:
+            result_data["upper_bound"] = result["upper_bound"]
+        if "lower_bound" in result:
+            result_data["lower_bound"] = result["lower_bound"]
+
+        # ========================================
+        # 결과 저장 - Redis
+        # ========================================
+        logger.info(f"[Worker] Job {job_id}: Storing results to Redis")
         r.setex(f"job:result:{job_id}", 3600, json.dumps(result_data))
         r.setex(f"job:status:{job_id}", 3600, json.dumps({"status": "completed"}))
-        
-        # PostgreSQL 저장
+
+        # ========================================
+        # 결과 저장 - PostgreSQL
+        # ========================================
         try:
             conn = psycopg2.connect(
                 host=settings.POSTGRES_HOST,
@@ -92,7 +124,7 @@ def execute_inference(job_id: str, model_name: str, data: list, config: dict, me
             )
             cursor = conn.cursor()
             cursor.execute("""
-                INSERT INTO inference_results 
+                INSERT INTO inference_results
                 (job_id, model_name, status, predictions, confidence, metrics, metadata, created_at, completed_at)
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (job_id) DO UPDATE SET
@@ -115,10 +147,13 @@ def execute_inference(job_id: str, model_name: str, data: list, config: dict, me
             conn.commit()
             cursor.close()
             conn.close()
+            logger.info(f"[Worker] Job {job_id}: Saved to PostgreSQL")
         except Exception as e:
-            logger.error(f"PostgreSQL error: {e}")
-        
-        # Kafka 전송
+            logger.error(f"[Worker] Job {job_id}: PostgreSQL error: {e}")
+
+        # ========================================
+        # 결과 전송 - Kafka
+        # ========================================
         try:
             producer = KafkaProducer(
                 bootstrap_servers=settings.KAFKA_BOOTSTRAP_SERVERS.split(','),
@@ -127,13 +162,14 @@ def execute_inference(job_id: str, model_name: str, data: list, config: dict, me
             producer.send(settings.KAFKA_TOPIC_INFERENCE_RESULTS, value=result_data)
             producer.flush()
             producer.close()
+            logger.info(f"[Worker] Job {job_id}: Sent to Kafka")
         except Exception as e:
-            logger.error(f"Kafka error: {e}")
-        
-        logger.info(f"[Worker] Job {job_id}: Completed in {inference_time:.2f}s")
-        
+            logger.error(f"[Worker] Job {job_id}: Kafka error: {e}")
+
+        logger.info(f"[Worker] Job {job_id}: All tasks completed")
+
         return result_data
-        
+
     except Exception as e:
         logger.error(f"[Worker] Job {job_id}: Error: {str(e)}")
         try:
@@ -145,7 +181,7 @@ def execute_inference(job_id: str, model_name: str, data: list, config: dict, me
 
 class InferenceTask(Task):
     """Celery 태스크 클래스"""
-    
+
     def on_failure(self, exc, task_id, args, kwargs, einfo):
         logger.error(f"Task {task_id} failed: {exc}")
         try:
@@ -154,7 +190,7 @@ class InferenceTask(Task):
             r.setex(f"job:status:{task_id}", 3600, f'{{"status": "failed", "error": "{str(exc)}"}}')
         except Exception as e:
             logger.error(f"Failed to update job status: {e}")
-    
+
     def on_success(self, retval, task_id, args, kwargs):
         logger.info(f"Task {task_id} completed successfully")
 
@@ -162,19 +198,22 @@ class InferenceTask(Task):
 @celery_app.task(bind=True, base=InferenceTask, name='analysis_server.tasks.run_inference')
 def run_inference(self, job_id: str, model_name: str, data: list, config: dict, metadata: dict):
     """
-    Celery 태스크 - 배치 큐에 추가
-    일정 크기 또는 시간이 되면 배치 처리
+    Celery 태스크 - Triton을 통한 추론 실행
+
+    배치 처리는 Triton Server의 Dynamic Batching이 자동으로 수행합니다.
+    따라서 기존 BatchManager는 불필요합니다.
+
+    Args:
+        job_id: 작업 ID
+        model_name: 모델 이름
+        data: 입력 데이터
+        config: 모델 설정
+        metadata: 메타데이터
+
+    Returns:
+        결과 딕셔너리
     """
     logger.info(f"[Task] Received job {job_id} for model '{model_name}'")
-    
-    # 배치 큐에 추가
-    batch_manager.add_to_batch(
-        model_name=model_name,
-        job_id=job_id,
-        data=data,
-        config=config,
-        metadata=metadata,
-        batch_callback=execute_inference
-    )
-    
-    return {"job_id": job_id, "status": "queued_for_batch"}
+
+    # Triton이 자동으로 배치 처리하므로, 직접 추론 실행
+    return execute_inference(job_id, model_name, data, config, metadata)

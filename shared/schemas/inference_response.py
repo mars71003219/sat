@@ -32,7 +32,7 @@ class InferenceResult(BaseModel):
     model_name: str
     predictions: List[float] = Field(default=[], description="Predicted values")
     confidence: Optional[List[float]] = Field(default=None, description="Confidence intervals")
-    metrics: Optional[Dict[str, float]] = Field(default={}, description="Performance metrics")
+    metrics: Optional[Dict[str, Any]] = Field(default={}, description="Performance metrics")
     metadata: Optional[Dict[str, Any]] = Field(default={}, description="Additional metadata")
     created_at: datetime
     completed_at: Optional[datetime] = None

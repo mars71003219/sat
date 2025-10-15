@@ -18,9 +18,9 @@ class DataSimulator:
     def __init__(self, base_url: str = "http://localhost:8000"):
         self.base_url = base_url
         self.patterns = ["linear", "seasonal", "random_walk", "exponential", "cyclical"]
-        self.models = ["lstm_timeseries", "moving_average"]
+        self.models = ["vae_timeseries", "transformer_timeseries"]
 
-    def generate_time_series(self, pattern: str, length: int = 10) -> List[float]:
+    def generate_time_series(self, pattern: str, length: int = 20) -> List[float]:
         """패턴에 따라 시계열 데이터 생성"""
 
         if pattern == "linear":
@@ -68,8 +68,8 @@ class DataSimulator:
             "model_name": model_name,
             "data": data,
             "config": {
-                "forecast_steps": 5,
-                "window_size": 5 if model_name == "moving_average" else None
+                "sequence_length": 20,
+                "forecast_steps": 10
             },
             "metadata": metadata or {}
         }
@@ -140,7 +140,7 @@ class DataSimulator:
                 for i in range(batch_size):
                     # 랜덤 패턴 선택
                     pattern = random.choice(self.patterns)
-                    data_length = random.randint(10, 20)
+                    data_length = 20  # VAE와 Transformer는 20 steps 필요
 
                     # 데이터 생성
                     data = self.generate_time_series(pattern, data_length)
