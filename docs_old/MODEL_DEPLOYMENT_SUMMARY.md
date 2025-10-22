@@ -1,19 +1,19 @@
-# 🚀 TensorRT 기반 Triton Inference Server 배포 가이드
+# TensorRT 기반 Triton Inference Server 배포 가이드
 
-## 📌 시스템 개요
+## 시스템 개요
 
 이 프로젝트는 **NVIDIA Triton Inference Server**와 **TensorRT**를 사용하여 시계열 예측 모델을 GPU에서 고성능으로 서빙하는 시스템입니다.
 
 ### 핵심 특징
 
-- ✅ **RTX 5060 (sm_120) 완전 지원**: TensorRT 엔진 사용으로 최신 GPU 호환성 확보
-- ✅ **범용 모델 변환 도구**: 어떤 PyTorch 모델이든 TensorRT로 변환 가능
-- ✅ **사용자 친화적**: 모델 학습 → 변환 → 배포까지 자동화
-- ✅ **고성능**: FP16 정밀도, Dynamic Batching, CUDA Graph 최적화
+- **RTX 5060 (sm_120) 완전 지원**: TensorRT 엔진 사용으로 최신 GPU 호환성 확보
+- **범용 모델 변환 도구**: 어떤 PyTorch 모델이든 TensorRT로 변환 가능
+- **사용자 친화적**: 모델 학습 → 변환 → 배포까지 자동화
+- **고성능**: FP16 정밀도, Dynamic Batching, CUDA Graph 최적화
 
 ---
 
-## 🏗️ 아키텍처
+## 아키텍처
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -57,7 +57,7 @@
 
 ---
 
-## 🛠️ 구성 요소
+## 구성 요소
 
 ### 1. 모델 변환 도구
 
@@ -118,7 +118,7 @@ class TimeSeriesTransformer(nn.Module):
 
 ---
 
-## 📋 빠른 시작
+## 빠른 시작
 
 ### Step 1: 모델 학습
 
@@ -192,7 +192,7 @@ python scripts/test_simulator.py
 
 ---
 
-## 📂 프로젝트 구조
+## 프로젝트 구조
 
 ```
 satellite/
@@ -214,9 +214,9 @@ satellite/
 │           └── train_and_export.py
 │
 ├── scripts/
-│   ├── convert_model_to_tensorrt.py       # ⭐ 핵심 변환 도구
+│   ├── convert_model_to_tensorrt.py       #  핵심 변환 도구
 │   ├── demo_create_simple_model.py        # 테스트 모델 생성 예제
-│   └── README_MODEL_CONVERSION.md         # ⭐ 상세 가이드
+│   └── README_MODEL_CONVERSION.md         #  상세 가이드
 │
 ├── shared/
 │   └── schemas/
@@ -227,7 +227,7 @@ satellite/
 
 ---
 
-## 🔧 고급 설정
+## 고급 설정
 
 ### 1. 배치 크기 최적화
 
@@ -284,13 +284,13 @@ optimization {
 
 ---
 
-## 🚨 문제 해결
+## 문제 해결
 
 ### 1. RTX 5060 호환성
 
 **문제**: PyTorch가 sm_120을 지원하지 않음
 
-**해결**: ✅ TensorRT 사용으로 해결됨
+**해결**:  TensorRT 사용으로 해결됨
 - TensorRT는 빌드 시 현재 GPU에 최적화된 엔진 생성
 - RTX 5060에서 완벽 작동
 
@@ -330,7 +330,7 @@ print(checkpoint.keys())
 
 ---
 
-## 📊 성능 벤치마크
+## 성능 벤치마크
 
 ### 예상 성능 (RTX 5060)
 
@@ -351,9 +351,9 @@ print(checkpoint.keys())
 
 ---
 
-## 🔄 워크플로우 비교
+## 워크플로우 비교
 
-### ❌ 이전 방식 (PyTorch 백엔드)
+###  이전 방식 (PyTorch 백엔드)
 
 ```
 PyTorch 모델 (.pth)
@@ -362,10 +362,10 @@ Triton Python Backend
     ↓
 GPU 호환성 문제 (sm_120 미지원)
     ↓
-❌ 실패
+ 실패
 ```
 
-### ✅ 현재 방식 (TensorRT 백엔드)
+###  현재 방식 (TensorRT 백엔드)
 
 ```
 PyTorch 모델 (.pth)
@@ -376,12 +376,12 @@ TensorRT 엔진 빌드 (.plan)
     ↓
 Triton TensorRT Backend
     ↓
-✅ RTX 5060에서 완벽 작동
+ RTX 5060에서 완벽 작동
 ```
 
 ---
 
-## 📚 추가 리소스
+## 추가 리소스
 
 ### 공식 문서
 
@@ -397,7 +397,7 @@ Triton TensorRT Backend
 
 ---
 
-## ✅ 체크리스트
+## 체크리스트
 
 새 모델 배포 시:
 
@@ -413,7 +413,7 @@ Triton TensorRT Backend
 
 ---
 
-## 🎯 결론
+## 결론
 
 이 시스템은 **유연성**과 **성능**을 모두 갖춘 프로덕션 레벨 추론 서버입니다:
 
@@ -435,4 +435,4 @@ python scripts/convert_model_to_tensorrt.py \
     --output-shape Z
 ```
 
-이제 새로운 알고리즘이나 모델이 생기면, 위 명령 하나로 즉시 Triton에 배포할 수 있습니다! 🚀
+이제 새로운 알고리즘이나 모델이 생기면, 위 명령 하나로 즉시 Triton에 배포할 수 있습니다! 

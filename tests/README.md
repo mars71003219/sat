@@ -2,30 +2,107 @@
 
 이 디렉토리는 추론 시스템의 테스트와 데모를 위한 도구들을 포함합니다.
 
-## 📁 파일 구조
+##  파일 구조
 
 ```
 tests/
+├── satellite_simulator.py  # 인공위성 텔레메트리 시뮬레이터 (Kafka)
 ├── data_simulator.py       # 데이터 생성 및 지속적 추론 시뮬레이터
 ├── demo_system.py          # 시스템 데모
 ├── test_simulator.py       # 전체 성능 테스트 스위트
 ├── test_single_model.py    # 단일 모델 빠른 테스트
+├── requirements.txt        # Python 의존성
 └── README.md               # 이 문서
 ```
 
-## 🎯 주요 테스트 도구
+##  주요 테스트 도구
 
-### 1. data_simulator.py - 데이터 시뮬레이터
+### 1. satellite_simulator.py - 인공위성 텔레메트리 시뮬레이터 (NEW!)
+
+**목적**: 실제 인공위성 센서 데이터를 시뮬레이션하여 VictoriaMetrics 시계열 DB에 저장하고 트렌드 분석을 수행합니다.
+
+**시뮬레이션되는 센서**:
+- **온도 (Temperature)**: -50°C ~ 50°C, 열 사이클 및 지구 그림자 영향
+- **고도 (Altitude)**: 400km ~ 450km, 타원 궤도 변동
+- **속도 (Velocity)**: 7.6km/s ~ 7.8km/s, 케플러 법칙
+- **배터리 전압 (Battery)**: 3.0V ~ 4.2V, 충/방전 사이클
+- **태양광 출력 (Solar Power)**: 0W ~ 100W, 태양 각도 및 그림자 영향
+- **위치 (Location)**: 위도/경도, 궤도 경사각 51.6도
+
+**데이터 흐름**:
+```
+Satellite Simulator → Kafka (satellite-telemetry) → VictoriaMetrics Consumer → VictoriaMetrics DB
+```
+
+**사용법**:
+```bash
+# 의존성 설치
+pip install -r requirements.txt
+
+# 기본 실행 (5초 간격)
+python3 satellite_simulator.py
+
+# 커스텀 설정
+python3 satellite_simulator.py \
+    --kafka kafka:9092 \
+    --satellite-id SAT-002 \
+    --interval 2.0 \
+    --duration 3600
+
+# Docker 외부에서 실행 (로컬 Kafka)
+python3 satellite_simulator.py --kafka localhost:9092
+```
+
+**파라미터**:
+- `--kafka`: Kafka 브로커 주소 (기본값: localhost:9092)
+- `--satellite-id`: 위성 식별자 (기본값: SAT-001)
+- `--interval`: 데이터 생성 주기 초 (기본값: 5.0)
+- `--duration`: 실행 시간 초 (기본값: 무제한)
+
+**출력 예시**:
+```
+======================================================================
+인공위성 텔레메트리 시뮬레이터 시작
+======================================================================
+위성 ID: SAT-001
+데이터 주기: 5.0초
+실행 시간: 무제한
+======================================================================
+
+[0001] 2025-10-22T10:30:00.000000+00:00
+  Temperature:  23.45°C
+  Altitude:    425.32 km
+  Velocity:      7.663 km/s
+  Battery:       3.85 V
+  Solar Power:  85.23 W
+  Position:    (45.2345, 127.5678)
+
+Message delivered to satellite-telemetry [0]
+```
+
+**검증 방법**:
+```bash
+# VictoriaMetrics에서 데이터 확인
+curl "http://localhost:8428/api/v1/query?query=satellite_temperature"
+
+# Kafka 메시지 확인
+docker exec -it kafka kafka-console-consumer \
+    --bootstrap-server localhost:9092 \
+    --topic satellite-telemetry \
+    --from-beginning
+```
+
+### 2. data_simulator.py - 데이터 시뮬레이터
 
 **목적**: 실제 운영 환경을 시뮬레이션하여 시스템 전체 동작을 검증합니다.
 
 **검증 항목**:
-- ✅ VAE & Transformer 모델 추론
-- ✅ PostgreSQL 결과 저장
-- ✅ Redis 큐 동작
-- ✅ RabbitMQ 메시지 처리
-- ✅ 대시보드 실시간 업데이트
-- ✅ Flower Celery 모니터링
+-  VAE & Transformer 모델 추론
+-  PostgreSQL 결과 저장
+-  Redis 큐 동작
+-  RabbitMQ 메시지 처리
+-  대시보드 실시간 업데이트
+-  Flower Celery 모니터링
 
 **사용법**:
 ```bash
@@ -97,9 +174,9 @@ python3 test_simulator.py
 ```
 
 **성능 목표**:
-- ✅ Throughput > 30 RPS
-- ✅ P95 Latency < 200ms
-- ✅ Success Rate > 95%
+-  Throughput > 30 RPS
+-  P95 Latency < 200ms
+-  Success Rate > 95%
 
 ### 3. test_single_model.py - 단일 모델 테스트
 
@@ -116,10 +193,10 @@ python3 test_single_model.py
 Testing: vae_timeseries
 ============================================================
 Submitting job...
-✅ Job ID: f9e4ea24-2f97-4370-beb0-03551af2e10e
+ Job ID: f9e4ea24-2f97-4370-beb0-03551af2e10e
 Waiting for result...
 
-✅ Success!
+ Success!
    Total Time: 1.008s
    Inference Time: 0.102s
    Model Type: VAE
@@ -135,7 +212,7 @@ Waiting for result...
 python3 demo_system.py
 ```
 
-## 📊 검증 방법
+##  검증 방법
 
 ### 1. PostgreSQL 결과 확인
 
@@ -197,7 +274,7 @@ KEYS celery-task-meta-*
 - Topic 메시지 흐름
 - Consumer Group 상태
 
-## 🔄 전체 시스템 테스트 워크플로우
+##  전체 시스템 테스트 워크플로우
 
 ### 단계 1: 모든 서비스 시작
 
@@ -227,7 +304,7 @@ cd tests
 python3 test_single_model.py
 ```
 
-✅ VAE와 Transformer 모두 성공해야 합니다.
+ VAE와 Transformer 모두 성공해야 합니다.
 
 ### 단계 4: 데이터 시뮬레이터 실행
 
@@ -279,11 +356,11 @@ python3 test_simulator.py
 ```
 
 성능 목표 달성 확인:
-- ✅ Throughput > 30 RPS
-- ✅ P95 Latency < 200ms
-- ✅ Success Rate > 95%
+-  Throughput > 30 RPS
+-  P95 Latency < 200ms
+-  Success Rate > 95%
 
-## 🐛 트러블슈팅
+##  트러블슈팅
 
 ### 문제: 작업이 제출되지만 결과가 나오지 않음
 
@@ -333,7 +410,7 @@ docker compose restart postgres
 # operation-server가 자동으로 재연결됩니다
 ```
 
-## 📝 테스트 체크리스트
+##  테스트 체크리스트
 
 시스템 배포 전 다음 항목을 모두 확인하세요:
 
@@ -349,4 +426,4 @@ docker compose restart postgres
 - [ ] 성공률 > 95%
 - [ ] 평균 추론 시간 < 200ms
 
-모든 항목이 체크되면 시스템이 프로덕션 준비 완료입니다! ✅
+모든 항목이 체크되면 시스템이 프로덕션 준비 완료입니다! 

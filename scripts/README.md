@@ -2,7 +2,7 @@
 
 이 디렉토리는 **외부 학습 서버에서 받은 모델**을 Triton Inference Server용으로 변환하는 도구를 포함합니다.
 
-## 📁 파일 구조
+##  파일 구조
 
 ```
 scripts/
@@ -13,7 +13,7 @@ scripts/
 └── README.md                  # 이 문서
 ```
 
-## 🔄 워크플로우
+##  워크플로우
 
 ### 1. 외부 학습 서버에서 모델 받기
 
@@ -68,7 +68,7 @@ python3 test_single_model.py
 python3 test_simulator.py
 ```
 
-## 📝 convert_model.py 파라미터 설명
+##  convert_model.py 파라미터 설명
 
 | 파라미터 | 설명 | 예시 |
 |---------|------|------|
@@ -81,7 +81,7 @@ python3 test_simulator.py
 | `--backend` | 백엔드 선택 (`onnx` 또는 `tensorrt`) | `onnx` |
 | `--output-dir` | 출력 디렉토리 | `../model_repository` |
 
-## 🎯 실제 사용 예시
+##  실제 사용 예시
 
 ### VAE 모델 변환
 
@@ -111,25 +111,25 @@ python3 convert_model.py \
     --output-dir ../model_repository
 ```
 
-## 🔧 GPU 호환성
+##  GPU 호환성
 
 ### ONNX Runtime (권장)
-- ✅ RTX 5060 (sm_100) 호환
-- ✅ 대부분의 NVIDIA GPU 지원
-- ✅ CPU fallback 지원
+-  RTX 5060 (sm_100) 호환
+-  대부분의 NVIDIA GPU 지원
+-  CPU fallback 지원
 
 ### TensorRT
-- ⚠️ GPU별 엔진 빌드 필요
-- ⚠️ RTX 5060 (sm_100)은 최신 TensorRT 필요
-- ✅ 최고 성능
+-  GPU별 엔진 빌드 필요
+-  RTX 5060 (sm_100)은 최신 TensorRT 필요
+-  최고 성능
 
-## 📚 참고 문서
+##  참고 문서
 
 - [Triton Inference Server 공식 문서](https://docs.nvidia.com/deeplearning/triton-inference-server/)
 - [ONNX Runtime 문서](https://onnxruntime.ai/docs/)
 - [TensorRT 문서](https://docs.nvidia.com/deeplearning/tensorrt/)
 
-## ⚠️ 중요 사항
+##  중요 사항
 
 1. **이 플랫폼은 추론 전용입니다** - 모델 학습은 외부 서버에서 수행
 2. **모델 정의 파일 필요** - `.pth` 파일만으로는 변환 불가능

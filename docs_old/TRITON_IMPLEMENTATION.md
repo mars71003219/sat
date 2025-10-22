@@ -1,6 +1,6 @@
 # Nvidia Triton Inference Server 적용 완료
 
-## 📋 목차
+## 목차
 1. [개요](#개요)
 2. [주요 변경 사항](#주요-변경-사항)
 3. [아키텍처](#아키텍처)
@@ -94,25 +94,25 @@ triton-server:
 #### 삭제된 파일
 ```
 analysis-server/core/
-├── batch_manager.py     ❌ 삭제 (Triton Dynamic Batching으로 대체)
-├── model_loader.py      ❌ 삭제 (Triton Model Repository로 대체)
-└── model_factory.py     ❌ 삭제 (Triton Model Repository로 대체)
+├── batch_manager.py      삭제 (Triton Dynamic Batching으로 대체)
+├── model_loader.py       삭제 (Triton Model Repository로 대체)
+└── model_factory.py      삭제 (Triton Model Repository로 대체)
 ```
 
 #### 추가된 파일
 ```
 analysis-server/core/
-└── triton_client.py     ✅ 새로 추가 (전/후처리 + Triton gRPC 통신)
+└── triton_client.py      새로 추가 (전/후처리 + Triton gRPC 통신)
 
 model_repository/
 ├── lstm_timeseries/
-│   ├── config.pbtxt     ✅ Triton 모델 설정
+│   ├── config.pbtxt      Triton 모델 설정
 │   └── 1/
-│       └── model.py     ✅ Python Backend 모델
+│       └── model.py      Python Backend 모델
 └── moving_average/
-    ├── config.pbtxt     ✅ Triton 모델 설정
+    ├── config.pbtxt      Triton 모델 설정
     └── 1/
-        └── model.py     ✅ Python Backend 모델
+        └── model.py      Python Backend 모델
 ```
 
 #### 수정된 파일
@@ -584,9 +584,9 @@ logger.info(f"Final predictions: {predictions}")
 | **지연시간 (p50)** | 50ms | 30ms | **40% ⬇️** |
 | **지연시간 (p99)** | 200ms | 80ms | **60% ⬇️** |
 | **GPU 활용도** | 35% | 85% | **2.4배 ⬆️** |
-| **배치 크기** | 수동 (max 8) | 자동 (max 32) | ✅ |
-| **동시 모델 실행** | ❌ | ✅ | ✅ |
-| **모니터링** | 제한적 | Prometheus | ✅ |
+| **배치 크기** | 수동 (max 8) | 자동 (max 32) |  |
+| **동시 모델 실행** |  |  |  |
+| **모니터링** | 제한적 | Prometheus |  |
 
 ### 배치 처리 성능
 

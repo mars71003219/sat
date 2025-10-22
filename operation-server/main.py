@@ -91,3 +91,7 @@ app.include_router(search_router, prefix="/api/v1")
 # Dashboard router 추가
 from api.routes.dashboard import router as dashboard_router
 app.include_router(dashboard_router, prefix="/api/v1")
+
+# Trends router 추가
+from api.routes.trends import router as trends_router
+app.include_router(trends_router, prefix="/api/v1")

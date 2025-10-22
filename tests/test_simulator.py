@@ -25,7 +25,7 @@ class InferenceSimulator:
         try:
             response = requests.get(f"{self.base_url}/health", timeout=5)
             if response.status_code == 200:
-                print("✅ Operation Server is healthy")
+                print(" Operation Server is healthy")
                 return True
             else:
                 print(f"Operation Server health check failed: {response.status_code}")
@@ -238,10 +238,10 @@ class InferenceSimulator:
                 completed += 1
 
                 if result['success']:
-                    print(f"✅ [{completed}/{num_requests}] Request {result['request_id']}: "
+                    print(f" [{completed}/{num_requests}] Request {result['request_id']}: "
                           f"{result['total_time']:.3f}s")
                 else:
-                    print(f"❌ [{completed}/{num_requests}] Request {result['request_id']} failed")
+                    print(f" [{completed}/{num_requests}] Request {result['request_id']} failed")
 
         total_time = time.time() - start_time
 
@@ -269,7 +269,7 @@ class InferenceSimulator:
             }
 
             # 결과 출력
-            print(f"\n📊 Performance Statistics:")
+            print(f"\n Performance Statistics:")
             print(f"  - Total Requests: {stats['total_requests']}")
             print(f"  - Successful: {stats['successful']}")
             print(f"  - Failed: {stats['failed']}")
@@ -287,7 +287,7 @@ class InferenceSimulator:
 
             return stats
         else:
-            print(f"\n❌ All requests failed")
+            print(f"\n All requests failed")
             return {"total_requests": num_requests, "successful": 0, "failed": len(failed)}
 
     def run_full_test_suite(self):
@@ -300,7 +300,7 @@ class InferenceSimulator:
         # 1. Health Check
         print("\n[1/5] Health Check")
         if not self.check_health():
-            print("\n❌ System is not ready. Exiting.")
+            print("\n System is not ready. Exiting.")
             sys.exit(1)
 
         # 2. Single VAE Test
@@ -337,7 +337,7 @@ class InferenceSimulator:
         print("="*60)
 
         # 단일 요청 성능
-        print("\n📊 Single Request Performance:")
+        print("\n Single Request Performance:")
         print(f"  VAE:")
         if vae_single.get('success'):
             print(f"    - Total Time: {vae_single.get('total_time'):.3f}s")
@@ -353,7 +353,7 @@ class InferenceSimulator:
             print(f"    - Failed: {transformer_single.get('error', 'Unknown error')}")
 
         # 동시 요청 성능
-        print("\n📊 Concurrent Request Performance (50 requests, 10 workers):")
+        print("\n Concurrent Request Performance (50 requests, 10 workers):")
         print(f"  VAE:")
         if isinstance(vae_concurrent, dict) and vae_concurrent.get('successful', 0) > 0:
             print(f"    - Throughput: {vae_concurrent.get('throughput', 0):.2f} RPS")
@@ -369,7 +369,7 @@ class InferenceSimulator:
             print(f"    - Success Rate: {transformer_concurrent.get('successful', 0)}/{transformer_concurrent.get('total_requests', 0)}")
 
         # 성능 목표 달성 여부
-        print("\n🎯 Performance Goals:")
+        print("\n Performance Goals:")
 
         vae_throughput = vae_concurrent.get('throughput', 0)
         transformer_throughput = transformer_concurrent.get('throughput', 0)
@@ -382,7 +382,7 @@ class InferenceSimulator:
         ]
 
         for goal, achieved in goals:
-            status = "✅" if achieved else "❌"
+            status = "" if achieved else ""
             print(f"  {status} {goal}")
 
         print("\n" + "="*60)

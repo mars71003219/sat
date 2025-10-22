@@ -1,6 +1,6 @@
 # Nvidia Triton Inference Server 적용 분석
 
-## 📋 목차
+## 목차
 1. [현재 시스템 아키텍처 분석](#현재-시스템-아키텍처-분석)
 2. [Triton Server 개요](#triton-server-개요)
 3. [적용 시 장점](#적용-시-장점)
@@ -93,7 +93,7 @@ Nvidia가 개발한 **오픈소스 추론 서빙 플랫폼**으로, 다양한 �
 
 ## 적용 시 장점
 
-### ✅ 1. 추론 성능 향상
+### 1. 추론 성능 향상
 
 **Dynamic Batching**
 - 현재: 수동 배치 관리 (`batch_manager`)
@@ -113,7 +113,7 @@ dynamic_batching {
 - Triton: 여러 요청 병합하여 GPU 활용도 극대화
 - **예상 GPU 활용도**: 30-40% → 70-90%
 
-### ✅ 2. 멀티 프레임워크 지원
+### 2. 멀티 프레임워크 지원
 
 **현재 문제점**
 - PyTorch 모델만 지원
@@ -135,7 +135,7 @@ dynamic_batching {
 │       └── 1/model.py
 ```
 
-### ✅ 3. 모델 버전 관리 개선
+### 3. 모델 버전 관리 개선
 
 **현재 구조**
 - Factory Pattern으로 모델 등록
@@ -155,7 +155,7 @@ model_repository/
 - A/B 테스팅 용이
 - 롤백 간편
 
-### ✅ 4. 운영 효율성 향상
+### 4. 운영 효율성 향상
 
 **모니터링**
 ```python
@@ -175,7 +175,7 @@ curl http://triton:8000/v2/health/ready
 curl http://triton:8000/v2/models/lstm_timeseries/ready
 ```
 
-### ✅ 5. 확장성
+### 5. 확장성
 
 **현재**
 - Celery Worker 수평 확장만 가능
@@ -201,7 +201,7 @@ instance_group [
 
 ## 적용 시 단점 및 고려사항
 
-### ❌ 1. 시스템 복잡도 증가
+### 1. 시스템 복잡도 증가
 
 **추가 컴포넌트**
 - Triton Server 컨테이너 추가
@@ -213,7 +213,7 @@ instance_group [
 - Protobuf 설정 파일 이해
 - gRPC/HTTP API 학습
 
-### ❌ 2. 기존 코드 대폭 수정 필요
+### 2. 기존 코드 대폭 수정 필요
 
 **변경 범위**
 ```diff
@@ -231,7 +231,7 @@ instance_group [
 - 테스트 및 디버깅: 3-5일
 - **총 예상 작업**: 2-3주
 
-### ❌ 3. 리소스 오버헤드
+### 3. 리소스 오버헤드
 
 **메모리**
 - Triton Server 자체 메모리: ~500MB-1GB
@@ -241,7 +241,7 @@ instance_group [
 - 현재: 2개 (operation-server, analysis-worker)
 - Triton 도입 후: 3개 (operation-server, triton-server, [선택] celery-worker)
 
-### ❌ 4. 현재 시스템 특성상 불필요할 수 있음
+### 4. 현재 시스템 특성상 불필요할 수 있음
 
 **현재 모델 특성**
 - LSTM, Moving Average: 경량 모델
@@ -253,7 +253,7 @@ instance_group [
 - 추론 시간이 긴 모델 (수백ms ~ 수초)
 - 높은 처리량 요구 (초당 수천 건)
 
-### ❌ 5. Python Backend 제약
+### 5. Python Backend 제약
 
 **현재 코드**
 ```python
@@ -332,7 +332,7 @@ class LSTMTimeSeriesModel(BaseModel):
 
 ## 구현 복잡도 분석
 
-### Phase 1: Triton Server 설정 (난이도: ⭐⭐⭐)
+### Phase 1: Triton Server 설정 (난이도: )
 
 **작업 내용**
 1. Docker Compose에 Triton 추가
@@ -360,7 +360,7 @@ triton-server:
             capabilities: [gpu]
 ```
 
-### Phase 2: 모델 변환 (난이도: ⭐⭐⭐⭐)
+### Phase 2: 모델 변환 (난이도: )
 
 **PyTorch → Triton PyTorch Backend**
 
@@ -428,7 +428,7 @@ instance_group [
 ]
 ```
 
-### Phase 3: 클라이언트 재작성 (난이도: ⭐⭐⭐)
+### Phase 3: 클라이언트 재작성 (난이도: )
 
 ```python
 # analysis-server/core/triton_client.py
@@ -461,7 +461,7 @@ class TritonInferenceClient:
         return output_data
 ```
 
-### Phase 4: 통합 및 테스트 (난이도: ⭐⭐⭐⭐⭐)
+### Phase 4: 통합 및 테스트 (난이도: )
 
 **변경 필요 파일**
 - `analysis-server/tasks.py` - Triton 클라이언트 사용
@@ -477,12 +477,12 @@ class TritonInferenceClient:
 
 | 항목 | 예상 시간 | 난이도 |
 |------|----------|--------|
-| Triton 설정 및 학습 | 3-5일 | ⭐⭐⭐ |
-| 모델 변환 및 Config 작성 | 3-5일 | ⭐⭐⭐⭐ |
-| 클라이언트 재작성 | 2-3일 | ⭐⭐⭐ |
-| 통합 및 디버깅 | 5-7일 | ⭐⭐⭐⭐⭐ |
-| 문서화 및 테스트 | 2-3일 | ⭐⭐ |
-| **총 작업 시간** | **15-23일** | **⭐⭐⭐⭐** |
+| Triton 설정 및 학습 | 3-5일 |  |
+| 모델 변환 및 Config 작성 | 3-5일 |  |
+| 클라이언트 재작성 | 2-3일 |  |
+| 통합 및 디버깅 | 5-7일 |  |
+| 문서화 및 테스트 | 2-3일 |  |
+| **총 작업 시간** | **15-23일** | **** |
 
 ### 편익 (Benefit)
 
@@ -491,16 +491,16 @@ class TritonInferenceClient:
 | 처리량 (RPS) | 10-20 | 50-100 | 5-10배 ⬆️ |
 | GPU 활용도 | 30-40% | 70-90% | 2배 ⬆️ |
 | 지연시간 (p99) | 100ms | 80ms | 20% ⬇️ |
-| 배치 처리 | 수동 | 자동 | ✅ |
-| 모니터링 | 제한적 | 풍부 | ✅ |
-| 멀티 프레임워크 | ❌ | ✅ | ✅ |
-| 모델 버전 관리 | 수동 | 자동 | ✅ |
+| 배치 처리 | 수동 | 자동 |  |
+| 모니터링 | 제한적 | 풍부 |  |
+| 멀티 프레임워크 |  |  |  |
+| 모델 버전 관리 | 수동 | 자동 |  |
 
 ---
 
 ## 최종 권장사항
 
-### 🎯 결론: **현재 시점에서는 Triton 도입을 권장하지 않음**
+### 결론: **현재 시점에서는 Triton 도입을 권장하지 않음**
 
 ### 이유
 
@@ -522,41 +522,41 @@ class TritonInferenceClient:
 
 ---
 
-### 📊 Triton 도입을 고려할 만한 상황
+### Triton 도입을 고려할 만한 상황
 
 다음 조건 중 **2개 이상 해당되면** Triton 도입을 재검토하세요:
 
-✅ **대규모 딥러닝 모델 사용**
+ **대규모 딥러닝 모델 사용**
 - BERT, GPT, ResNet, YOLO 등
 - 모델 크기 > 500MB
 - 추론 시간 > 100ms
 
-✅ **높은 처리량 요구**
+ **높은 처리량 요구**
 - 초당 1000+ 요청
 - 실시간 응답 필요
 - GPU 활용도 최대화 필요
 
-✅ **멀티 프레임워크 필요**
+ **멀티 프레임워크 필요**
 - PyTorch, TensorFlow, ONNX 혼용
 - 모델 앙상블 필요
 
-✅ **모델 버전 관리 복잡**
+ **모델 버전 관리 복잡**
 - A/B 테스팅 빈번
 - 여러 버전 동시 서빙 필요
 - 카나리 배포 필요
 
-✅ **프로덕션 SLA 엄격**
+ **프로덕션 SLA 엄격**
 - 99.9% 가용성 요구
 - 자동 장애 복구 필요
 - 세밀한 모니터링 필요
 
 ---
 
-### 🔄 대안: 현재 시스템 개선 방안
+### 대안: 현재 시스템 개선 방안
 
 Triton 없이 현재 시스템을 개선할 수 있는 방법:
 
-#### 1. **MLflow 통합** (추천 ⭐⭐⭐⭐⭐)
+#### 1. **MLflow 통합** (추천 )
 ```python
 # 모델 버전 관리 및 추적
 import mlflow
@@ -628,10 +628,10 @@ torch.onnx.export(model, dummy_input, "model.onnx")
 
 ---
 
-### 📅 로드맵 제안
+### 로드맵 제안
 
 #### Phase 1: 현재 시스템 최적화 (1-2주)
-1. MLflow 통합 ✅ **[진행 중]**
+1. MLflow 통합  **[진행 중]**
 2. Prometheus 모니터링 추가
 3. 배치 처리 개선
 4. 모델 JIT 컴파일
@@ -887,25 +887,25 @@ def run_inference(self, job_id: str, model_name: str, data: list, config: dict, 
 
 ## 요약
 
-### ✅ Triton 도입이 적합한 경우
+###  Triton 도입이 적합한 경우
 - 대규모 딥러닝 모델 (BERT, ResNet 등)
 - 높은 처리량 요구 (1000+ RPS)
 - 멀티 프레임워크 필요
 - 복잡한 모델 버전 관리 필요
 
-### ❌ 현재 시스템에는 과도함
+###  현재 시스템에는 과도함
 - 경량 모델 (LSTM, MA)
 - 낮은/중간 처리량
 - 단일 프레임워크 (PyTorch)
 - 간단한 버전 관리
 
-### 🎯 추천 접근법
-1. **현재**: MLflow 통합 (진행 중) ✅
+###  추천 접근법
+1. **현재**: MLflow 통합 (진행 중) 
 2. **단기**: 배치 처리 최적화, 모니터링 강화
 3. **중기**: 부하 테스트 및 병목 분석
 4. **장기**: 필요 시 Triton 재검토
 
-### 💡 핵심 메시지
+###  핵심 메시지
 > **"Right tool for the right job"**
 > Triton은 훌륭한 도구이지만, 현재 시스템에는 과도한 엔지니어링입니다.
 > MLflow + 최적화된 Celery가 현재 요구사항에 더 적합합니다.

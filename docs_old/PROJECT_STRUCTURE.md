@@ -1,6 +1,6 @@
 # 프로젝트 구조
 
-## 📁 디렉토리 개요
+##  디렉토리 개요
 
 ```
 satellite/
@@ -42,7 +42,7 @@ satellite/
 │   └── README.md             # 사용 가이드
 │
 ├── tests/                    # 테스트 및 데모
-│   ├── data_simulator.py     # 데이터 생성 시뮬레이터 ⭐
+│   ├── data_simulator.py     # 데이터 생성 시뮬레이터 
 │   ├── test_simulator.py     # 전체 성능 테스트
 │   ├── test_single_model.py  # 단일 모델 테스트
 │   └── README.md             # 테스트 가이드
@@ -60,7 +60,7 @@ satellite/
 └── CLAUDE.md                 # Claude Code 작업 가이드
 ```
 
-## 🎯 각 폴더의 역할
+##  각 폴더의 역할
 
 ### 추론 서비스
 - **analysis-server**: Celery Worker로 Triton Server에 추론 요청을 보내고 결과를 처리
@@ -80,7 +80,7 @@ satellite/
 - **nginx**: 리버스 프록시 (프론트엔드 → API 라우팅)
 - **shared**: 마이크로서비스 간 공유 코드
 
-## 🔄 데이터 흐름
+##  데이터 흐름
 
 ```
 외부 학습 서버
@@ -104,7 +104,7 @@ PostgreSQL (결과 저장)
 frontend (웹 UI)
 ```
 
-## 🧪 테스트 흐름
+##  테스트 흐름
 
 ```
 tests/data_simulator.py (데이터 생성)
@@ -124,7 +124,7 @@ frontend/dashboard.html (실시간 모니터링)
 Flower (Celery 모니터링)
 ```
 
-## 📝 주요 파일
+##  주요 파일
 
 ### 설정 파일
 - `docker-compose.yml`: 모든 서비스 정의
@@ -137,11 +137,11 @@ Flower (Celery 모니터링)
 - `operation-server/main.py`: FastAPI 애플리케이션
 
 ### 테스트 도구
-- `tests/data_simulator.py`: 실제 운영 환경 시뮬레이션 ⭐
+- `tests/data_simulator.py`: 실제 운영 환경 시뮬레이션 
 - `tests/test_simulator.py`: 성능 벤치마크
 - `tests/test_single_model.py`: 빠른 동작 확인
 
-## 🚀 빠른 시작
+##  빠른 시작
 
 ### 1. 모든 서비스 시작
 ```bash
@@ -170,7 +170,7 @@ python3 data_simulator.py         # 전체 시스템 테스트
 - Flower: http://localhost:5555
 - Kafka UI: http://localhost:8080
 
-## 🔧 개발 가이드
+##  개발 가이드
 
 ### 새 모델 추가
 1. 외부 학습 서버에서 `.pth` 파일 받기
@@ -196,7 +196,7 @@ docker compose logs -f analysis-worker-1
 docker compose logs -f operation-server
 ```
 
-## 📊 시스템 요구사항
+##  시스템 요구사항
 
 ### 하드웨어
 - **GPU**: NVIDIA GPU (CUDA 지원)
@@ -210,7 +210,7 @@ docker compose logs -f operation-server
 - NVIDIA Docker Runtime
 - Python 3.10+
 
-## 🎓 참고 문서
+##  참고 문서
 
 - `scripts/README.md`: 모델 변환 가이드
 - `tests/README.md`: 테스트 및 데모 가이드

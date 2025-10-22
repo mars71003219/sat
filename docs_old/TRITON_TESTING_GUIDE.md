@@ -1,6 +1,6 @@
 # Triton Inference Server 통합 테스트 가이드
 
-## 📋 목차
+## 목차
 1. [테스트 환경 준비](#테스트-환경-준비)
 2. [단계별 테스트](#단계별-테스트)
 3. [성능 테스트](#성능-테스트)
@@ -552,20 +552,20 @@ logger.info(f"[DEBUG] Predictions (denormalized): {predictions}")
 
 ## 성능 벤치마크 체크리스트
 
-### ✅ 기본 성능 확인
+### 기본 성능 확인
 
 - [ ] 처리량: 80+ RPS (100개 요청, 동시성 10)
 - [ ] 지연시간 (p50): < 40ms
 - [ ] 지연시간 (p99): < 100ms
 - [ ] GPU 활용률: > 70%
 
-### ✅ Dynamic Batching 확인
+### Dynamic Batching 확인
 
 - [ ] Triton 로그에서 배치 처리 확인
 - [ ] 배치 크기 8, 16, 32로 자동 조절되는지 확인
 - [ ] 큐 대기 시간 < 100ms
 
-### ✅ 안정성 확인
+### 안정성 확인
 
 - [ ] 1000개 요청 모두 성공 (에러율 0%)
 - [ ] 메모리 누수 없음 (장시간 실행 후 메모리 증가 없음)
@@ -588,25 +588,25 @@ echo "=========================================="
 # Step 1: Health Check
 echo -e "\n[Step 1] Triton Server Health Check"
 if curl -s http://localhost:8500/v2/health/ready | grep -q "ready"; then
-  echo "✅ Triton Server is ready"
+  echo "Triton Server is ready"
 else
-  echo "❌ Triton Server is not ready"
+  echo "Triton Server is not ready"
   exit 1
 fi
 
 # Step 2: Model Check
 echo -e "\n[Step 2] Model Ready Check"
 if curl -s http://localhost:8500/v2/models/lstm_timeseries/ready | grep -q "true"; then
-  echo "✅ LSTM model is ready"
+  echo "LSTM model is ready"
 else
-  echo "❌ LSTM model is not ready"
+  echo "LSTM model is not ready"
   exit 1
 fi
 
 if curl -s http://localhost:8500/v2/models/moving_average/ready | grep -q "true"; then
-  echo "✅ Moving Average model is ready"
+  echo "Moving Average model is ready"
 else
-  echo "❌ Moving Average model is not ready"
+  echo "Moving Average model is not ready"
   exit 1
 fi
 
@@ -623,9 +623,9 @@ RESPONSE=$(curl -s -X POST http://localhost:8000/api/v1/inference/submit \
 JOB_ID=$(echo $RESPONSE | jq -r '.job_id')
 
 if [ "$JOB_ID" != "null" ]; then
-  echo "✅ Inference request submitted: $JOB_ID"
+  echo "Inference request submitted: $JOB_ID"
 else
-  echo "❌ Inference request failed"
+  echo "Inference request failed"
   exit 1
 fi
 
@@ -635,10 +635,10 @@ RESULT=$(curl -s http://localhost:8000/api/v1/inference/result/$JOB_ID)
 STATUS=$(echo $RESULT | jq -r '.status')
 
 if [ "$STATUS" == "completed" ]; then
-  echo "✅ Inference completed successfully"
+  echo "Inference completed successfully"
   echo $RESULT | jq '.predictions'
 else
-  echo "❌ Inference failed: $STATUS"
+  echo "Inference failed: $STATUS"
   exit 1
 fi
 
@@ -649,7 +649,7 @@ ab -n 100 -c 10 -q -p test_payload.json -T application/json \
   | grep "Requests per second"
 
 echo -e "\n=========================================="
-echo "All tests passed! ✅"
+echo "All tests passed!"
 echo "=========================================="
 ```
 

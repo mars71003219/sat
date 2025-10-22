@@ -33,12 +33,12 @@ def test_single_model(model_name: str):
     response = requests.post(f"{base_url}/api/v1/inference/submit", json=payload)
 
     if response.status_code != 200:
-        print(f"❌ Submit failed: {response.status_code}")
+        print(f" Submit failed: {response.status_code}")
         print(response.text)
         return
 
     job_id = response.json()["job_id"]
-    print(f"✅ Job ID: {job_id}")
+    print(f" Job ID: {job_id}")
 
     # Wait for result
     print("Waiting for result...")
@@ -50,7 +50,7 @@ def test_single_model(model_name: str):
             result = result_response.json()
             if result.get("status") == "completed":
                 total_time = time.time() - start
-                print(f"\n✅ Success!")
+                print(f"\n Success!")
                 print(f"   Total Time: {total_time:.3f}s")
                 print(f"   Inference Time: {result['metrics']['inference_time']:.3f}s")
                 print(f"   Model Type: {result['metrics']['model_type']}")
@@ -58,13 +58,13 @@ def test_single_model(model_name: str):
                 print(f"   Confidence: {result['confidence'][:5]}...")
                 return
             elif result.get("status") == "failed":
-                print(f"❌ Job failed: {result.get('error', 'Unknown error')}")
+                print(f" Job failed: {result.get('error', 'Unknown error')}")
                 return
 
         if i % 5 == 0:
             print(f"   Waiting... ({i}s)")
 
-    print(f"❌ Timeout after 30s")
+    print(f" Timeout after 30s")
 
 
 if __name__ == "__main__":

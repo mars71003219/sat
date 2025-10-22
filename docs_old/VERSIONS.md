@@ -76,7 +76,7 @@
 - GPU: RTX 5060 (sm_100, Compute Capability 10.0)
 - VRAM: 8GB
 - Driver: 최신 버전
-- 백엔드: ONNX Runtime (GPU) ✅ 완전 호환
+- 백엔드: ONNX Runtime (GPU)  완전 호환
 
 ## 호환성 매트릭스
 
@@ -84,16 +84,16 @@
 
 | GPU 아키텍처 | Compute Capability | TensorRT 10.11.0.33 |
 |-------------|-------------------|---------------------|
-| Ampere (RTX 30x0) | 8.6 | ✅ 완전 지원 |
-| Ada Lovelace (RTX 40x0) | 8.9 | ✅ 완전 지원 |
-| Blackwell (RTX 50x0) | 10.0 | ⚠️ 최신 TensorRT 필요 |
+| Ampere (RTX 30x0) | 8.6 |  완전 지원 |
+| Ada Lovelace (RTX 40x0) | 8.9 |  완전 지원 |
+| Blackwell (RTX 50x0) | 10.0 |  최신 TensorRT 필요 |
 
 ### ONNX Runtime 지원
 
 | GPU 아키텍처 | ONNX Runtime |
 |-------------|--------------|
-| All NVIDIA GPUs | ✅ 완전 지원 (CUDA Backend) |
-| RTX 50x0 (sm_100) | ✅ 완전 호환 |
+| All NVIDIA GPUs |  완전 지원 (CUDA Backend) |
+| RTX 50x0 (sm_100) |  완전 호환 |
 
 **권장**: RTX 50x0 시리즈는 ONNX Runtime 백엔드 사용 권장
 

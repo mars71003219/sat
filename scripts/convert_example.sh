@@ -82,7 +82,7 @@ docker run --rm \
         #     --output-dir /workspace/model_repository
 
         echo ''
-        echo '⚠️  Please customize this script with your model specifics:'
+        echo '  Please customize this script with your model specifics:'
         echo '   - model-class: Your PyTorch model class name'
         echo '   - model-module: Python file with model definition'
         echo '   - input-shape: Model input dimensions'

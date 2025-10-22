@@ -71,7 +71,7 @@ def load_pytorch_model(model_path, model_class_name, model_module_path=None):
     model.load_state_dict(state_dict)
     model.eval()
 
-    print(f"✅ Model loaded: {model_class_name}")
+    print(f" Model loaded: {model_class_name}")
     return model
 
 
@@ -99,15 +99,15 @@ def export_to_onnx(model, input_shape, output_path, dynamic_batch=True):
         verbose=False,
     )
 
-    print(f"✅ ONNX model exported: {output_path}")
+    print(f" ONNX model exported: {output_path}")
 
     try:
         import onnx
         onnx_model = onnx.load(output_path)
         onnx.checker.check_model(onnx_model)
-        print("✅ ONNX model verification passed")
+        print(" ONNX model verification passed")
     except ImportError:
-        print("⚠️  ONNX package not installed, skipping verification")
+        print("  ONNX package not installed, skipping verification")
 
     return output_path
 
@@ -130,8 +130,8 @@ def build_tensorrt_engine(
     trtexec_path = shutil.which("trtexec") or "/usr/src/tensorrt/bin/trtexec"
 
     if not os.path.exists(trtexec_path):
-        print(f"❌ trtexec not found at {trtexec_path}")
-        print("⚠️  TensorRT conversion requires running inside Triton container")
+        print(f" trtexec not found at {trtexec_path}")
+        print("  TensorRT conversion requires running inside Triton container")
         sys.exit(1)
 
     input_shape_str = "x".join(map(str, input_shape))
@@ -155,7 +155,7 @@ def build_tensorrt_engine(
     result = subprocess.run(cmd, capture_output=True, text=True)
 
     if result.returncode != 0:
-        print("❌ TensorRT engine build failed!")
+        print(" TensorRT engine build failed!")
         print(result.stderr)
         sys.exit(1)
 
@@ -163,8 +163,8 @@ def build_tensorrt_engine(
     with open(log_path, 'w') as f:
         f.write(result.stdout)
 
-    print(f"✅ TensorRT engine built: {engine_path}")
-    print(f"✅ Build log saved: {log_path}")
+    print(f" TensorRT engine built: {engine_path}")
+    print(f" Build log saved: {log_path}")
 
     return engine_path
 
@@ -198,8 +198,8 @@ def create_triton_config(
 
     shutil.copy(model_file, target_file)
 
-    print(f"✅ Model directory created: {model_dir}")
-    print(f"✅ Model file copied to: {target_file}")
+    print(f" Model directory created: {model_dir}")
+    print(f" Model file copied to: {target_file}")
 
     # config.pbtxt 생성
     config_path = model_dir / "config.pbtxt"
@@ -280,7 +280,7 @@ dynamic_batching {{
     with open(config_path, 'w') as f:
         f.write(config_content)
 
-    print(f"✅ Config file created: {config_path}")
+    print(f" Config file created: {config_path}")
 
     return model_dir
 
@@ -400,7 +400,7 @@ Examples:
     )
 
     # 완료
-    print(f"\n✅ Conversion completed successfully!")
+    print(f"\n Conversion completed successfully!")
     print("="*70)
     print(f"Model Repository: {model_dir}")
     print(f"  ├── config.pbtxt (platform: {args.backend})")
