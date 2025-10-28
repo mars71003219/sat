@@ -221,9 +221,9 @@
   background: repeating-linear-gradient(
     to right,
     var(--accent-green) 0px,
-    var(--accent-green) 5px,
-    transparent 5px,
-    transparent 10px
+    var(--accent-green) 8px,
+    transparent 8px,
+    transparent 12px
   );
   height: 3px;
 }

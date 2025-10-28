@@ -80,7 +80,7 @@ def query_victoria_metrics(metric_name: str, start_time: datetime, end_time: dat
             'query': query,
             'start': int(start_time.timestamp()),
             'end': int(end_time.timestamp()),
-            'step': '60s'  # 1분 간격
+            'step': '1s'  # 1초 간격
         }
 
         response = requests.get(

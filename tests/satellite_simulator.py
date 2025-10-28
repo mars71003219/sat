@@ -24,6 +24,13 @@ class SatelliteDataSimulator:
     - 속도 (Velocity): 7.6km/s ~ 7.8km/s
     - 배터리 전압 (Battery): 3.0V ~ 4.2V, 충/방전 사이클
     - 태양광 패널 출력 (Solar Power): 0W ~ 100W, 지구 그림자 영향
+
+    추가된 현실적 이벤트:
+    - 열 이상 (Thermal anomalies): 간헐적 온도 스파이크
+    - 배터리 노화 (Battery degradation): 시간에 따른 성능 저하
+    - 궤도 조정 (Orbital maneuvers): 추력기 분사
+    - 센서 노이즈 (Sensor drift): 점진적 오차 누적
+    - 태양 플레어 영향 (Solar flare impact)
     """
 
     def __init__(self, kafka_bootstrap_servers: str = 'localhost:9092',
@@ -51,6 +58,16 @@ class SatelliteDataSimulator:
         # 궤도 위치 (도)
         self.orbital_position = random.uniform(0, 360)
 
+        # 이벤트 상태
+        self.battery_health = 1.0  # 배터리 건강도 (1.0 = 100%)
+        self.thermal_anomaly_active = False
+        self.thermal_anomaly_end_time = 0
+        self.maneuver_active = False
+        self.maneuver_end_time = 0
+        self.sensor_drift_temp = 0.0
+        self.sensor_drift_altitude = 0.0
+        self.last_maneuver_time = -10000  # 마지막 궤도 조정 시간
+
         print(f"Satellite Simulator initialized: {satellite_id}")
         print(f"Kafka: {kafka_bootstrap_servers}")
         print(f"Topic: {self.kafka_topic}")
@@ -59,6 +76,7 @@ class SatelliteDataSimulator:
         """
         온도 계산 (-50°C ~ 50°C)
         태양 노출 시 높음, 그림자 진입 시 낮음
+        + 열 이상 이벤트, 센서 드리프트
         """
         # 기본 온도
         base_temp = 0.0
@@ -68,20 +86,49 @@ class SatelliteDataSimulator:
         thermal_variation = 30 * math.sin(2 * math.pi * thermal_phase)
 
         # 태양 노출 여부 (궤도 위치에 따라)
-        # 지구 그림자는 궤도의 약 30%
         in_shadow = (self.orbital_position % 360) > 252  # 약 108도 구간
         shadow_factor = -20 if in_shadow else 0
+
+        # 그림자 진입/이탈 시 급격한 온도 변화
+        shadow_transition_zone = (self.orbital_position % 360)
+        if 250 < shadow_transition_zone < 254:  # 그림자 진입
+            transition_spike = -15 * (254 - shadow_transition_zone) / 4
+        elif 358 < shadow_transition_zone or shadow_transition_zone < 2:  # 그림자 이탈
+            if shadow_transition_zone > 180:
+                transition_spike = 15 * (360 - shadow_transition_zone) / 2
+            else:
+                transition_spike = 15 * (2 - shadow_transition_zone) / 2
+        else:
+            transition_spike = 0
+
+        # 열 이상 이벤트 (간헐적 온도 스파이크) - 5% 확률
+        thermal_anomaly = 0
+        if not self.thermal_anomaly_active and random.random() < 0.0015:
+            self.thermal_anomaly_active = True
+            self.thermal_anomaly_end_time = self.time_elapsed + random.uniform(60, 180)
+            print(f"  [EVENT] Thermal anomaly detected! (Duration: {self.thermal_anomaly_end_time - self.time_elapsed:.0f}s)")
+
+        if self.thermal_anomaly_active:
+            if self.time_elapsed < self.thermal_anomaly_end_time:
+                thermal_anomaly = random.uniform(15, 25)
+            else:
+                self.thermal_anomaly_active = False
+                print(f"  [EVENT] Thermal anomaly ended")
+
+        # 센서 드리프트 (점진적 오차 누적)
+        self.sensor_drift_temp += random.gauss(0, 0.01)
+        self.sensor_drift_temp = max(-2, min(2, self.sensor_drift_temp))  # ±2°C 제한
 
         # 노이즈
         noise = random.gauss(0, 2)
 
-        temperature = base_temp + thermal_variation + shadow_factor + noise
+        temperature = base_temp + thermal_variation + shadow_factor + transition_spike + thermal_anomaly + self.sensor_drift_temp + noise
         return round(temperature, 2)
 
     def calculate_altitude(self) -> float:
         """
         고도 계산 (400km ~ 450km)
-        타원 궤도로 인한 변동
+        타원 궤도로 인한 변동 + 궤도 조정 이벤트
         """
         # 평균 고도
         mean_altitude = 425.0
@@ -90,19 +137,42 @@ class SatelliteDataSimulator:
         orbit_phase = (self.time_elapsed % self.orbit_period) / self.orbit_period
         eccentricity_variation = 25 * math.cos(2 * math.pi * orbit_phase)
 
-        # 대기 저항에 의한 점진적 감소 (매우 미미)
+        # 대기 저항에 의한 점진적 감소
         drag_decay = -0.001 * (self.time_elapsed / 3600)  # 시간당 -0.001km
+
+        # 궤도 조정 (Orbital Maneuver) - 2시간마다 5% 확률
+        maneuver_boost = 0
+        time_since_last_maneuver = self.time_elapsed - self.last_maneuver_time
+
+        if not self.maneuver_active and time_since_last_maneuver > 7200 and random.random() < 0.002:
+            self.maneuver_active = True
+            self.maneuver_end_time = self.time_elapsed + random.uniform(30, 90)
+            self.last_maneuver_time = self.time_elapsed
+            print(f"  [EVENT] Orbital maneuver started! (Burn time: {self.maneuver_end_time - self.time_elapsed:.0f}s)")
+
+        if self.maneuver_active:
+            if self.time_elapsed < self.maneuver_end_time:
+                # 추력기 분사 중 고도 상승
+                burn_progress = (self.time_elapsed - self.last_maneuver_time) / (self.maneuver_end_time - self.last_maneuver_time)
+                maneuver_boost = 2.0 * burn_progress  # 최대 2km 상승
+            else:
+                self.maneuver_active = False
+                print(f"  [EVENT] Orbital maneuver completed (+{maneuver_boost:.2f}km)")
+
+        # 센서 드리프트
+        self.sensor_drift_altitude += random.gauss(0, 0.005)
+        self.sensor_drift_altitude = max(-0.5, min(0.5, self.sensor_drift_altitude))
 
         # 노이즈
         noise = random.gauss(0, 0.5)
 
-        altitude = mean_altitude + eccentricity_variation + drag_decay + noise
+        altitude = mean_altitude + eccentricity_variation + drag_decay + maneuver_boost + self.sensor_drift_altitude + noise
         return round(altitude, 2)
 
     def calculate_velocity(self) -> float:
         """
         속도 계산 (7.6km/s ~ 7.8km/s)
-        고도에 반비례 (케플러 법칙)
+        고도에 반비례 (케플러 법칙) + 궤도 조정 영향
         """
         # 기본 속도 (평균)
         mean_velocity = 7.66
@@ -111,17 +181,27 @@ class SatelliteDataSimulator:
         orbit_phase = (self.time_elapsed % self.orbit_period) / self.orbit_period
         velocity_variation = 0.1 * math.sin(2 * math.pi * orbit_phase)
 
+        # 궤도 조정 중 속도 변화
+        maneuver_delta_v = 0
+        if self.maneuver_active:
+            # 추력기 분사 중 속도 감소 (고도 상승을 위해)
+            maneuver_delta_v = -0.02
+
         # 노이즈
         noise = random.gauss(0, 0.01)
 
-        velocity = mean_velocity + velocity_variation + noise
+        velocity = mean_velocity + velocity_variation + maneuver_delta_v + noise
         return round(velocity, 3)
 
     def calculate_battery_voltage(self) -> float:
         """
         배터리 전압 (3.0V ~ 4.2V)
-        태양광 충전 및 시스템 소비에 따른 사이클
+        태양광 충전 및 시스템 소비에 따른 사이클 + 노화 효과
         """
+        # 배터리 노화 (시간에 따라 최대 전압 감소)
+        hours_elapsed = self.time_elapsed / 3600
+        self.battery_health = max(0.75, 1.0 - (hours_elapsed * 0.00001))  # 매우 느린 노화
+
         # 배터리 충/방전 사이클
         battery_phase = (self.time_elapsed % self.battery_cycle_period) / self.battery_cycle_period
 
@@ -133,7 +213,12 @@ class SatelliteDataSimulator:
             voltage = 3.3 + 0.3 * (1 - battery_phase)
         else:
             # 충전 중 (3.6V ~ 4.2V)
-            voltage = 3.6 + 0.6 * battery_phase
+            max_charge_voltage = 4.2 * self.battery_health
+            voltage = 3.6 + (max_charge_voltage - 3.6) * battery_phase
+
+        # 궤도 조정 중 전력 소비 증가
+        if self.maneuver_active:
+            voltage -= 0.15  # 추력기 작동 시 전압 강하
 
         # 노이즈
         noise = random.gauss(0, 0.05)
@@ -144,7 +229,7 @@ class SatelliteDataSimulator:
     def calculate_solar_power(self) -> float:
         """
         태양광 패널 출력 (0W ~ 100W)
-        태양 각도 및 지구 그림자 영향
+        태양 각도 및 지구 그림자 영향 + 패널 성능 저하
         """
         # 지구 그림자 확인
         in_shadow = (self.orbital_position % 360) > 252
@@ -159,11 +244,28 @@ class SatelliteDataSimulator:
         # 코사인 법칙 (태양 각도)
         solar_angle = math.cos(2 * math.pi * orbit_phase)
         max_power = 100.0
-        power = max_power * max(0, solar_angle) * 0.85  # 효율 85%
 
-        # 패널 성능 변동
+        # 패널 노화 (시간에 따른 성능 저하)
+        hours_elapsed = self.time_elapsed / 3600
+        panel_degradation = max(0.85, 1.0 - (hours_elapsed * 0.00002))  # 매우 느린 노화
+
+        power = max_power * max(0, solar_angle) * 0.85 * panel_degradation
+
+        # 패널 성능 변동 (먼지, 각도 미세 조정 등)
         efficiency_variation = random.uniform(0.95, 1.0)
         power *= efficiency_variation
+
+        # 그림자 경계 영역에서 부분 출력
+        shadow_position = (self.orbital_position % 360)
+        if 248 < shadow_position < 252:  # 그림자 진입 중
+            partial_factor = (252 - shadow_position) / 4
+            power *= partial_factor
+        elif 356 < shadow_position or shadow_position < 4:  # 그림자 이탈 중
+            if shadow_position > 180:
+                partial_factor = (360 - shadow_position) / 4
+            else:
+                partial_factor = shadow_position / 4
+            power *= partial_factor
 
         # 노이즈
         noise = random.gauss(0, 1)

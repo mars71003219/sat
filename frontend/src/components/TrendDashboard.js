@@ -22,16 +22,20 @@ const METRICS = [
   { key: 'satellite_solar_power', label: 'Solar Power', unit: 'W', color: '#fb923c' }
 ];
 
+// 메트릭별 최신 값을 저장하는 상태 추가 예정
+
 const TIME_RANGES = [
+  { label: '1m', hours: 1/60 },      // 1분
+  { label: '5m', hours: 5/60 },      // 5분
+  { label: '15m', hours: 15/60 },    // 15분
   { label: '1h', hours: 1 },
   { label: '6h', hours: 6 },
   { label: '1d', hours: 24 },
-  { label: '1w', hours: 168 },
 ];
 
 function TrendDashboard() {
   const [selectedMetric, setSelectedMetric] = useState(METRICS[0]);
-  const [selectedTimeRange, setSelectedTimeRange] = useState(TIME_RANGES[1]); // 6h
+  const [selectedTimeRange, setSelectedTimeRange] = useState(TIME_RANGES[1]); // 5m (실시간 느낌)
   const [rawData, setRawData] = useState([]);
   const [predictionData, setPredictionData] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -39,6 +43,7 @@ function TrendDashboard() {
   const [stats, setStats] = useState(null);
   const [satellites, setSatellites] = useState([]);
   const [selectedSatellite, setSelectedSatellite] = useState('SAT-001');
+  const [latestValues, setLatestValues] = useState({});
 
   // 위성 목록 조회
   useEffect(() => {
@@ -90,6 +95,8 @@ function TrendDashboard() {
 
       // 예측 데이터 조회 (선택사항)
       // TODO: 모델 이름을 선택할 수 있도록 UI 추가
+      // 임시로 비활성화 - API 에러 수정 후 재활성화
+      /*
       try {
         const predParams = new URLSearchParams({
           model_name: 'vae_timeseries',
@@ -111,6 +118,8 @@ function TrendDashboard() {
         console.warn('Prediction data not available:', predErr);
         setPredictionData([]);
       }
+      */
+      setPredictionData([]); // 예측 데이터 임시 비활성화
 
     } catch (err) {
       setError(err.message);
@@ -120,13 +129,46 @@ function TrendDashboard() {
     }
   }, [selectedMetric, selectedTimeRange, selectedSatellite]);
 
+  // 모든 메트릭의 최신 값을 가져오는 함수
+  const fetchLatestValues = useCallback(async () => {
+    try {
+      const promises = METRICS.map(async (metric) => {
+        const response = await fetch(
+          `/victoriametrics/api/v1/query?query=${metric.key}{satellite_id="${selectedSatellite}"}`
+        );
+        const data = await response.json();
+
+        if (data.status === 'success' && data.data.result.length > 0) {
+          const value = parseFloat(data.data.result[0].value[1]);
+          return { key: metric.key, value };
+        }
+        return { key: metric.key, value: null };
+      });
+
+      const results = await Promise.all(promises);
+      const valuesMap = {};
+      results.forEach(r => {
+        valuesMap[r.key] = r.value;
+      });
+      setLatestValues(valuesMap);
+    } catch (err) {
+      console.error('Failed to fetch latest values:', err);
+    }
+  }, [selectedSatellite]);
+
   useEffect(() => {
     fetchTrendData();
+    fetchLatestValues();
 
-    // 자동 새로고침 (30초마다)
-    const interval = setInterval(fetchTrendData, 30000);
-    return () => clearInterval(interval);
-  }, [fetchTrendData]);
+    // 자동 새로고침: 트렌드 차트와 최신 값 모두 1초마다 업데이트
+    const trendInterval = setInterval(fetchTrendData, 1000);
+    const valuesInterval = setInterval(fetchLatestValues, 1000);
+
+    return () => {
+      clearInterval(trendInterval);
+      clearInterval(valuesInterval);
+    };
+  }, [fetchTrendData, fetchLatestValues]);
 
   // 차트 데이터 병합
   const mergedChartData = React.useMemo(() => {
@@ -146,7 +188,14 @@ function TrendDashboard() {
   }, [rawData, predictionData]);
 
   const formatXAxis = (timestamp) => {
-    return format(new Date(timestamp), 'HH:mm');
+    // 시간 범위에 따라 포맷 변경
+    if (selectedTimeRange.hours <= 0.25) { // 15분 이하: 초 단위 표시
+      return format(new Date(timestamp), 'HH:mm:ss');
+    } else if (selectedTimeRange.hours <= 1) { // 1시간 이하: 분 단위 표시
+      return format(new Date(timestamp), 'HH:mm');
+    } else { // 그 이상: 시간 단위 표시
+      return format(new Date(timestamp), 'HH:mm');
+    }
   };
 
   const CustomTooltip = ({ active, payload, label }) => {
@@ -209,25 +258,33 @@ function TrendDashboard() {
 
       {/* 메트릭 카드 */}
       <div className="metrics-grid">
-        {METRICS.map(metric => (
-          <div
-            key={metric.key}
-            className={`metric-card ${selectedMetric.key === metric.key ? 'selected' : ''}`}
-            onClick={() => setSelectedMetric(metric)}
-          >
-            <div className="metric-label">{metric.label}</div>
-            {stats && selectedMetric.key === metric.key && (
+        {METRICS.map(metric => {
+          const latestValue = latestValues[metric.key];
+          const isSelected = selectedMetric.key === metric.key;
+
+          return (
+            <div
+              key={metric.key}
+              className={`metric-card ${isSelected ? 'selected' : ''}`}
+              onClick={() => setSelectedMetric(metric)}
+            >
+              <div className="metric-label">{metric.label}</div>
               <div className="metric-stats">
                 <div className="stat-value" style={{ color: metric.color }}>
-                  {stats.mean !== null ? stats.mean.toFixed(2) : 'N/A'} {metric.unit}
+                  {latestValue !== null && latestValue !== undefined
+                    ? latestValue.toFixed(2)
+                    : 'N/A'}{' '}
+                  {metric.unit}
                 </div>
-                <div className="stat-range">
-                  Min: {stats.min?.toFixed(2) ?? 'N/A'} | Max: {stats.max?.toFixed(2) ?? 'N/A'}
-                </div>
+                {isSelected && stats && (
+                  <div className="stat-range">
+                    Min: {stats.min?.toFixed(2) ?? 'N/A'} | Max: {stats.max?.toFixed(2) ?? 'N/A'}
+                  </div>
+                )}
               </div>
-            )}
-          </div>
-        ))}
+            </div>
+          );
+        })}
       </div>
 
       {/* 에러 메시지 */}
@@ -289,10 +346,11 @@ function TrendDashboard() {
                   dataKey="prediction"
                   stroke="#4ade80"
                   strokeWidth={2}
-                  strokeDasharray="5 5"
+                  strokeDasharray="8 4"
                   dot={false}
                   name="Prediction"
                   isAnimationActive={false}
+                  opacity={0.8}
                 />
               )}
             </LineChart>
