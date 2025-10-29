@@ -113,6 +113,25 @@ services:
       - webnet
     restart: unless-stopped
 
+  inference-worker:
+    build:
+      context: ./inference-worker
+      dockerfile: Dockerfile
+    container_name: inference-worker
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - TRITON_SERVER_URL=triton-server:8000
+      - VICTORIA_METRICS_URL=http://victoria-metrics:8428
+      - WINDOW_SIZE=10
+      - PREDICTION_HORIZON=5
+    depends_on:
+      - kafka
+      - triton-server
+      - victoria-metrics
+    networks:
+      - webnet
+    restart: unless-stopped
+
   # --------------------------------------------------------------------
   # 모니터링 UI
   # --------------------------------------------------------------------

@@ -44,6 +44,9 @@ function TrendDashboard() {
   const [satellites, setSatellites] = useState([]);
   const [selectedSatellite, setSelectedSatellite] = useState('SAT-001');
   const [latestValues, setLatestValues] = useState({});
+  const [latestPredictions, setLatestPredictions] = useState({});
+  const [showRawData, setShowRawData] = useState(true);
+  const [showPrediction, setShowPrediction] = useState(true);
 
   // 위성 목록 조회
   useEffect(() => {
@@ -65,14 +68,19 @@ function TrendDashboard() {
 
   // 데이터 조회
   const fetchTrendData = useCallback(async () => {
-    setLoading(true);
+    // 초기 로딩일 때만 loading 상태 설정 (재렌더링 최소화)
+    if (rawData.length === 0) {
+      setLoading(true);
+    }
     setError(null);
 
-    const endTime = new Date();
-    const startTime = subHours(endTime, selectedTimeRange.hours);
+    // 현재 시각 기준으로 시간 범위 설정 (UTC 기준)
+    const now = Date.now(); // Unix timestamp (밀리초)
+    const endTime = new Date(now);
+    const startTime = new Date(now - selectedTimeRange.hours * 60 * 60 * 1000);
 
     try {
-      // 원본 데이터 조회
+      // 원본 데이터 조회 (UTC 시간으로 쿼리)
       const rawParams = new URLSearchParams({
         metric: selectedMetric.key,
         start_time: startTime.toISOString(),
@@ -84,55 +92,67 @@ function TrendDashboard() {
       if (!rawResponse.ok) throw new Error('Failed to fetch raw data');
       const rawResult = await rawResponse.json();
 
-      // 데이터 포맷팅
-      const formattedRawData = rawResult.data_points.map(point => ({
-        timestamp: new Date(point.timestamp).getTime(),
-        value: point.value
-      }));
+      // 데이터 포맷팅 (UTC 타임스탬프로 변환)
+      const formattedRawData = rawResult.data_points.map(point => {
+        // ISO 문자열이 Z 없이 오면 UTC로 처리
+        const timestamp = point.timestamp.endsWith('Z')
+          ? new Date(point.timestamp).getTime()
+          : new Date(point.timestamp + 'Z').getTime();
+        return {
+          timestamp,
+          value: point.value
+        };
+      });
 
       setRawData(formattedRawData);
       setStats(rawResult.summary);
 
-      // 예측 데이터 조회 (선택사항)
-      // TODO: 모델 이름을 선택할 수 있도록 UI 추가
-      // 임시로 비활성화 - API 에러 수정 후 재활성화
-      /*
+      // 예측 데이터 조회 (VictoriaMetrics에서 직접) - 미래 5초 포함
       try {
-        const predParams = new URLSearchParams({
-          model_name: 'vae_timeseries',
-          start_time: startTime.toISOString(),
-          end_time: endTime.toISOString(),
-          satellite_id: selectedSatellite
-        });
+        const predMetricName = `${selectedMetric.key}_prediction`;
+        const predQuery = `${predMetricName}{satellite_id="${selectedSatellite}"}`;
 
-        const predResponse = await fetch(`${API_BASE_URL}/trends/prediction?${predParams}`);
+        // Unix timestamp (초 단위) - 미래 5초 포함
+        const startTimestamp = Math.floor((now - selectedTimeRange.hours * 60 * 60 * 1000) / 1000);
+        const endTimestamp = Math.floor((now + 5000) / 1000);
+
+        const predResponse = await fetch(
+          `/victoriametrics/api/v1/query_range?query=${encodeURIComponent(predQuery)}&start=${startTimestamp}&end=${endTimestamp}&step=1s`
+        );
+
         if (predResponse.ok) {
           const predResult = await predResponse.json();
-          const formattedPredData = predResult.data_points.map(point => ({
-            timestamp: new Date(point.timestamp).getTime(),
-            value: point.value
-          }));
-          setPredictionData(formattedPredData);
+          if (predResult.status === 'success' && predResult.data.result.length > 0) {
+            const predValues = predResult.data.result[0].values || [];
+            const formattedPredData = predValues.map(([timestamp, value]) => ({
+              timestamp: timestamp * 1000,
+              prediction: parseFloat(value)
+            }));
+            setPredictionData(formattedPredData);
+          } else {
+            setPredictionData([]);
+          }
         }
       } catch (predErr) {
         console.warn('Prediction data not available:', predErr);
         setPredictionData([]);
       }
-      */
-      setPredictionData([]); // 예측 데이터 임시 비활성화
 
     } catch (err) {
       setError(err.message);
       console.error('Error fetching trend data:', err);
     } finally {
-      setLoading(false);
+      if (rawData.length === 0) {
+        setLoading(false);
+      }
     }
-  }, [selectedMetric, selectedTimeRange, selectedSatellite]);
+  }, [selectedMetric, selectedTimeRange, selectedSatellite, rawData.length]);
 
   // 모든 메트릭의 최신 값을 가져오는 함수
   const fetchLatestValues = useCallback(async () => {
     try {
-      const promises = METRICS.map(async (metric) => {
+      // Raw 데이터 조회
+      const rawPromises = METRICS.map(async (metric) => {
         const response = await fetch(
           `/victoriametrics/api/v1/query?query=${metric.key}{satellite_id="${selectedSatellite}"}`
         );
@@ -145,12 +165,37 @@ function TrendDashboard() {
         return { key: metric.key, value: null };
       });
 
-      const results = await Promise.all(promises);
+      // 예측 데이터 조회
+      const predictionPromises = METRICS.map(async (metric) => {
+        const predMetric = `${metric.key}_prediction`;
+        const response = await fetch(
+          `/victoriametrics/api/v1/query?query=${predMetric}{satellite_id="${selectedSatellite}"}`
+        );
+        const data = await response.json();
+
+        if (data.status === 'success' && data.data.result.length > 0) {
+          const value = parseFloat(data.data.result[0].value[1]);
+          return { key: metric.key, value };
+        }
+        return { key: metric.key, value: null };
+      });
+
+      const [rawResults, predResults] = await Promise.all([
+        Promise.all(rawPromises),
+        Promise.all(predictionPromises)
+      ]);
+
       const valuesMap = {};
-      results.forEach(r => {
+      rawResults.forEach(r => {
         valuesMap[r.key] = r.value;
       });
       setLatestValues(valuesMap);
+
+      const predictionsMap = {};
+      predResults.forEach(r => {
+        predictionsMap[r.key] = r.value;
+      });
+      setLatestPredictions(predictionsMap);
     } catch (err) {
       console.error('Failed to fetch latest values:', err);
     }
@@ -160,8 +205,8 @@ function TrendDashboard() {
     fetchTrendData();
     fetchLatestValues();
 
-    // 자동 새로고침: 트렌드 차트와 최신 값 모두 1초마다 업데이트
-    const trendInterval = setInterval(fetchTrendData, 1000);
+    // 자동 새로고침: 차트는 3초마다, 최신 값은 1초마다 업데이트
+    const trendInterval = setInterval(fetchTrendData, 3000);
     const valuesInterval = setInterval(fetchLatestValues, 1000);
 
     return () => {
@@ -180,12 +225,42 @@ function TrendDashboard() {
 
     predictionData.forEach(point => {
       const existing = dataMap.get(point.timestamp) || { timestamp: point.timestamp };
-      existing.prediction = point.value;
+      existing.prediction = point.prediction;
       dataMap.set(point.timestamp, existing);
     });
 
     return Array.from(dataMap.values()).sort((a, b) => a.timestamp - b.timestamp);
   }, [rawData, predictionData]);
+
+  // X축 도메인 계산 (고정 시간 윈도우, 최신 데이터가 우측에 표시)
+  // 실제 데이터의 타임스탬프 범위를 기준으로 설정
+  const xAxisDomain = React.useMemo(() => {
+    if (rawData.length === 0 && predictionData.length === 0) {
+      // 데이터가 없으면 기본 범위 반환
+      const now = Date.now();
+      return [now - selectedTimeRange.hours * 60 * 60 * 1000, now];
+    }
+
+    // 실제 데이터의 최소/최대 타임스탬프 계산
+    const allTimestamps = [
+      ...rawData.map(d => d.timestamp),
+      ...predictionData.map(d => d.timestamp)
+    ];
+
+    if (allTimestamps.length === 0) {
+      const now = Date.now();
+      return [now - selectedTimeRange.hours * 60 * 60 * 1000, now];
+    }
+
+    const maxTimestamp = Math.max(...allTimestamps);
+
+    // 시간 범위에 맞춰 윈도우 설정 (미래 포함하지 않음)
+    const windowDuration = selectedTimeRange.hours * 60 * 60 * 1000;
+    const windowStart = maxTimestamp - windowDuration;
+    const windowEnd = maxTimestamp;
+
+    return [windowStart, windowEnd];
+  }, [selectedTimeRange, rawData, predictionData]);
 
   const formatXAxis = (timestamp) => {
     // 시간 범위에 따라 포맷 변경
@@ -260,6 +335,7 @@ function TrendDashboard() {
       <div className="metrics-grid">
         {METRICS.map(metric => {
           const latestValue = latestValues[metric.key];
+          const predictionValue = latestPredictions[metric.key];
           const isSelected = selectedMetric.key === metric.key;
 
           return (
@@ -276,6 +352,11 @@ function TrendDashboard() {
                     : 'N/A'}{' '}
                   {metric.unit}
                 </div>
+                {predictionValue !== null && predictionValue !== undefined && (
+                  <div className="stat-prediction" style={{ color: '#4ade80', fontSize: '0.85em', marginTop: '4px' }}>
+                    Prediction: {predictionValue.toFixed(2)} {metric.unit}
+                  </div>
+                )}
                 {isSelected && stats && (
                   <div className="stat-range">
                     Min: {stats.min?.toFixed(2) ?? 'N/A'} | Max: {stats.max?.toFixed(2) ?? 'N/A'}
@@ -299,16 +380,22 @@ function TrendDashboard() {
         <div className="chart-header">
           <h2>{selectedMetric.label} Trend</h2>
           <div className="chart-legend">
-            <span className="legend-item">
+            <span
+              className={`legend-item ${showRawData ? 'active' : 'inactive'}`}
+              onClick={() => setShowRawData(!showRawData)}
+              style={{ cursor: 'pointer' }}
+            >
               <span className="legend-line raw"></span>
               Raw Data
             </span>
-            {predictionData.length > 0 && (
-              <span className="legend-item">
-                <span className="legend-line prediction"></span>
-                Prediction
-              </span>
-            )}
+            <span
+              className={`legend-item ${showPrediction ? 'active' : 'inactive'}`}
+              onClick={() => setShowPrediction(!showPrediction)}
+              style={{ cursor: 'pointer' }}
+            >
+              <span className="legend-line prediction"></span>
+              Prediction
+            </span>
           </div>
         </div>
 
@@ -322,8 +409,13 @@ function TrendDashboard() {
               <CartesianGrid strokeDasharray="3 3" stroke="#3a3a3f" />
               <XAxis
                 dataKey="timestamp"
+                type="number"
+                domain={xAxisDomain}
                 tickFormatter={formatXAxis}
                 stroke="#a0a0a0"
+                scale="time"
+                tickCount={6}
+                interval="preserveStartEnd"
               />
               <YAxis
                 stroke="#a0a0a0"
@@ -331,16 +423,18 @@ function TrendDashboard() {
               />
               <Tooltip content={<CustomTooltip />} />
               <Legend />
-              <Line
-                type="monotone"
-                dataKey="raw"
-                stroke={selectedMetric.color}
-                strokeWidth={2}
-                dot={false}
-                name="Raw Data"
-                isAnimationActive={false}
-              />
-              {predictionData.length > 0 && (
+              {showRawData && (
+                <Line
+                  type="monotone"
+                  dataKey="raw"
+                  stroke={selectedMetric.color}
+                  strokeWidth={2}
+                  dot={false}
+                  name="Raw Data"
+                  isAnimationActive={false}
+                />
+              )}
+              {showPrediction && predictionData.length > 0 && (
                 <Line
                   type="monotone"
                   dataKey="prediction"

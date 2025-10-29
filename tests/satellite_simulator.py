@@ -2,6 +2,13 @@
 """
 인공위성 텔레메트리 데이터 시뮬레이터
 실제 위성 센서 데이터와 유사한 패턴을 생성하고 Kafka로 전송합니다.
+  docker run -d --rm \
+    --name satellite-simulator \
+    --network satellite_webnet \
+    -v /mnt/c/projects/satellite/tests:/tests \
+    -w /tests \
+    python:3.10-slim \
+    bash -c "pip install -q confluent-kafka requests && python satellite_simulator.py --kafka kafka:9092 --interval 1"
 """
 
 import json

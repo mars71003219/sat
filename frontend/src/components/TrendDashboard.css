@@ -205,6 +205,23 @@
   gap: 8px;
   font-size: 14px;
   color: var(--text-secondary);
+  transition: opacity 0.2s, color 0.2s;
+  user-select: none;
+}
+
+.legend-item.active {
+  color: var(--text-primary);
+  opacity: 1;
+}
+
+.legend-item.inactive {
+  color: var(--text-secondary);
+  opacity: 0.4;
+}
+
+.legend-item:hover {
+  opacity: 1;
+  color: var(--text-primary);
 }
 
 .legend-line {
