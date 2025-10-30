@@ -7,7 +7,6 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
 
 from shared.schemas import InferenceRequest, InferenceResponse, InferenceResult, JobStatus
 from celery_tasks.client import submit_inference_task
-from database.redis_client import redis_client
 from database.postgres_client import postgres_client
 from messaging.websocket_manager import websocket_manager
 from utils.logger import get_logger
@@ -26,7 +25,7 @@ async def submit_inference(request: InferenceRequest):
         metadata["created_at"] = datetime.utcnow().isoformat()
         metadata["submitted_from"] = "operation_server"
         
-        redis_client.set_job_status(job_id, JobStatus.PENDING)
+        postgres_client.update_job_status(job_id, "pending")
         
         submit_inference_task(
             job_id=job_id,
@@ -53,7 +52,7 @@ async def submit_inference(request: InferenceRequest):
 @router.get("/status/{job_id}")
 async def get_status(job_id: str):
     """Get inference job status"""
-    status = redis_client.get_job_status(job_id)
+    status = postgres_client.get_job_status(job_id)
     if status.get("status") == "not_found":
         raise HTTPException(status_code=404, detail="Job not found")
     return status
@@ -62,7 +61,7 @@ async def get_status(job_id: str):
 @router.get("/result/{job_id}", response_model=InferenceResult)
 async def get_result(job_id: str):
     """Get inference job result"""
-    result = redis_client.get_job_result(job_id)
+    result = postgres_client.get_job_result(job_id)
     if not result:
         db_result = postgres_client.get_result(job_id)
         if not db_result:
@@ -80,10 +79,10 @@ async def websocket_endpoint(websocket: WebSocket, job_id: str):
             data = await websocket.receive_text()
             
             if data == "status":
-                status = redis_client.get_job_status(job_id)
+                status = postgres_client.get_job_status(job_id)
                 await websocket_manager.send_personal_message(status, websocket)
             elif data == "result":
-                result = redis_client.get_job_result(job_id)
+                result = postgres_client.get_job_result(job_id)
                 if result:
                     await websocket_manager.send_result(job_id, result)
     except WebSocketDisconnect:

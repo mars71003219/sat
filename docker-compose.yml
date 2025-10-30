@@ -36,15 +36,22 @@ services:
       /etc/confluent/docker/run
       "
 
-  redis:
-    image: redis/redis-stack:latest
-    container_name: redis
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: rabbitmq
     ports:
-      - "6379:6379"
-      - "8001:8001"
+      - "5672:5672"   # AMQP
+      - "15672:15672" # Management UI
+    environment:
+      - RABBITMQ_DEFAULT_USER=guest
+      - RABBITMQ_DEFAULT_PASS=guest
     networks:
       - webnet
-
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
   postgres:
     image: postgres:latest
     container_name: postgres
@@ -93,6 +100,8 @@ services:
     restart: unless-stopped
 
   # --------------------------------------------------------------------
+
+  # --------------------------------------------------------------------
   # VictoriaMetrics Consumer - Kafka to Time Series DB
   # --------------------------------------------------------------------
   victoria-consumer:
@@ -113,26 +122,6 @@ services:
       - webnet
     restart: unless-stopped
 
-  inference-worker:
-    build:
-      context: ./inference-worker
-      dockerfile: Dockerfile
-    container_name: inference-worker
-    environment:
-      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
-      - TRITON_SERVER_URL=triton-server:8000
-      - VICTORIA_METRICS_URL=http://victoria-metrics:8428
-      - WINDOW_SIZE=10
-      - PREDICTION_HORIZON=5
-    depends_on:
-      - kafka
-      - triton-server
-      - victoria-metrics
-    networks:
-      - webnet
-    restart: unless-stopped
-
-  # --------------------------------------------------------------------
   # 모니터링 UI
   # --------------------------------------------------------------------
   kafka-ui:
@@ -162,18 +151,17 @@ services:
       - ./operation-server:/app/operation-server
       - ./shared:/app/shared
     environment:
-      - REDIS_URL=redis://redis:6379/0
       - POSTGRES_HOST=postgres
       - POSTGRES_PORT=5432
       - POSTGRES_USER=admin
       - POSTGRES_PASSWORD=admin123
       - POSTGRES_DB=orders_db
       - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
-      - CELERY_BROKER_URL=redis://redis:6379/1
-      - CELERY_RESULT_BACKEND=redis://redis:6379/2
+      - CELERY_BROKER_URL=amqp://guest:guest@rabbitmq:5672//
+      - CELERY_RESULT_BACKEND=rpc://
       - ELASTICSEARCH_URL=http://elasticsearch:9200
     depends_on:
-      - redis
+      - rabbitmq
       - postgres
       - kafka
       - elasticsearch
@@ -234,31 +222,45 @@ services:
       - ./analysis-server:/app/analysis-server
       - ./shared:/app/shared
     environment:
-      - REDIS_URL=redis://redis:6379/0
       - POSTGRES_HOST=postgres
       - POSTGRES_PORT=5432
       - POSTGRES_USER=admin
       - POSTGRES_PASSWORD=admin123
       - POSTGRES_DB=orders_db
       - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
-      - CELERY_BROKER_URL=redis://redis:6379/1
-      - CELERY_RESULT_BACKEND=redis://redis:6379/2
+      - CELERY_BROKER_URL=amqp://guest:guest@rabbitmq:5672//
+      - CELERY_RESULT_BACKEND=rpc://
       - TRITON_SERVER_URL=triton-server:8001
     depends_on:
-      redis:
-        condition: service_started
-      postgres:
-        condition: service_started
-      kafka:
-        condition: service_started
-      triton-server:
-        condition: service_healthy
+      - rabbitmq
+      - postgres
+      - triton-server
     networks:
       - webnet
 
-  # --------------------------------------------------------------------
-  # Celery 모니터링
-  # --------------------------------------------------------------------
+
+  # Kafka에서 텔레메트리 읽어서 추론 트리거
+  kafka-inference-trigger:
+    build:
+      context: .
+      dockerfile: analysis-server/Dockerfile
+    container_name: kafka-inference-trigger
+    command: python3 kafka_consumer.py
+    volumes:
+      - ./analysis-server:/app/analysis-server
+      - ./shared:/app/shared
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - CELERY_BROKER_URL=amqp://guest:guest@rabbitmq:5672//
+      - CELERY_RESULT_BACKEND=rpc://
+    depends_on:
+      - kafka
+      - rabbitmq
+      - analysis-worker-1
+    networks:
+      - webnet
+    restart: unless-stopped
+
   flower:
     build:
       context: .
@@ -271,10 +273,10 @@ services:
       - ./operation-server:/app/operation-server
       - ./shared:/app/shared
     environment:
-      - CELERY_BROKER_URL=redis://redis:6379/1
-      - CELERY_RESULT_BACKEND=redis://redis:6379/2
+      - CELERY_BROKER_URL=amqp://guest:guest@rabbitmq:5672//
+      - CELERY_RESULT_BACKEND=rpc://
     depends_on:
-      - redis
+      - rabbitmq
     networks:
       - webnet
 
@@ -302,6 +304,7 @@ services:
       - operation-server
     networks:
       - webnet
+
 
 volumes:
   kafka_data:

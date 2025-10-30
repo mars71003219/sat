@@ -266,15 +266,15 @@ def save_subsystem_inference_start(job_id: str, subsystem: str, model_name: str,
     with client.get_connection() as conn:
         cursor = conn.cursor()
         
-        # Job 존재 확인 및 생성
-        cursor.execute("SELECT job_id FROM inference_jobs WHERE job_id = %s", (job_id,))
-        if not cursor.fetchone():
-            cursor.execute("""
-                INSERT INTO inference_jobs 
-                (job_id, satellite_id, source, trigger_reason, status, total_subsystems, metadata)
-                VALUES (%s, %s, %s, %s, 'processing', 1, %s)
-            """, (job_id, satellite_id, source, trigger_reason, 
-                  psycopg2.extras.Json(metadata)))
+        # Job 생성 (이미 있으면 무시)
+        cursor.execute("""
+            INSERT INTO inference_jobs 
+            (job_id, satellite_id, source, trigger_reason, status, total_subsystems, metadata)
+            VALUES (%s, %s, %s, %s, 'processing', 4, %s)
+            ON CONFLICT (job_id) DO UPDATE 
+            SET total_subsystems = GREATEST(inference_jobs.total_subsystems, 4)
+        """, (job_id, satellite_id, source, trigger_reason, 
+              psycopg2.extras.Json(metadata)))
         
         # 서브시스템 추론 레코드 생성
         cursor.execute("""
@@ -306,7 +306,11 @@ def save_subsystem_inference_result(job_id: str, subsystem: str, model_name: str
         input_std = float(np.std(input_data)) if input_data else None
         pred_mean = float(np.mean(predictions)) if predictions else None
         pred_std = float(np.std(predictions)) if predictions else None
-        
+
+        # Convert numpy types to Python native types
+        if isinstance(anomaly_detected, np.bool_):
+            anomaly_detected = bool(anomaly_detected)
+
         cursor.execute("""
             UPDATE subsystem_inferences
             SET status = %s,

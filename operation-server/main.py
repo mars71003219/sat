@@ -9,7 +9,6 @@ from shared.config.settings import settings
 from api.routes.inference import router as inference_router
 from api.routes.query import router as query_router
 from database.postgres_client import postgres_client
-from database.redis_client import redis_client
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -26,9 +25,6 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.error(f"Failed to initialize database: {e}")
     
-    if redis_client.ping():
-        logger.info("Redis connection established")
-    else:
         logger.warning("Redis connection failed")
     
     logger.info(f"Operation Server started - {settings.APP_VERSION}")
@@ -71,11 +67,8 @@ def read_root():
 @app.get("/health")
 def health_check():
     """Health check endpoint"""
-    redis_ok = redis_client.ping()
-    
     return {
-        "status": "healthy" if redis_ok else "degraded",
-        "redis": "connected" if redis_ok else "disconnected",
+        "status": "healthy",
         "server_type": "operation_server"
     }
 

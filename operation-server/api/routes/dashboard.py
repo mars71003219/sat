@@ -8,7 +8,6 @@ import json
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
 
 from database.postgres_client import postgres_client
-from database.redis_client import redis_client
 from utils.logger import get_logger
 
 logger = get_logger(__name__)

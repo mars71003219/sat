@@ -10,7 +10,7 @@ Docker 실행:
     -v /mnt/c/projects/satellite/tests:/tests \
     -w /tests \
     python:3.10-slim \
-    bash -c "pip install -q confluent-kafka && python satellite_simulator.py --kafka kafka:9092 --satellites 10 --interval 5 --duration 5400"
+    bash -c "pip install -q confluent-kafka && python satellite_simulator.py --kafka kafka:9092"
 
 CLI 예시:
   python satellite_simulator.py --kafka localhost:9092 --satellites 10 --interval 5 --duration 5400

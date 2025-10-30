@@ -12,7 +12,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 프로젝트는 세 가지 주요 계층으로 구성됩니다:
 
-1. **Infrastructure Services**: Kafka (KRaft mode), RabbitMQ, Redis, PostgreSQL, Elasticsearch
+1. **Infrastructure Services**: Kafka (KRaft mode), RabbitMQ, PostgreSQL, Elasticsearch, VictoriaMetrics
 2. **AI Service**: FastAPI 기반 GPU 가속 이미지 처리 서비스 (포트 8002)
 3. **Web Layer**: React 프론트엔드 + Nginx 리버스 프록시 (포트 80)
 
@@ -103,7 +103,6 @@ docker build -t satlas-ui:latest ./frontend
 - **AI Service**: 8002 → 8000 (컨테이너 내부)
 - **Kafka**: 9092
 - **RabbitMQ**: 5672 (AMQP), 15672 (Management UI)
-- **Redis**: 6379 (Redis), 8001 (RedisInsight)
 - **PostgreSQL**: 5432
 - **Elasticsearch**: 9200
 

@@ -6,7 +6,6 @@ pydantic==2.5.3
 pydantic-settings==2.1.0
 celery==5.3.6
 flower==2.0.1
-redis==5.0.1
 psycopg2-binary==2.9.9
 sqlalchemy==2.0.25
 kafka-python==2.0.2

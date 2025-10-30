@@ -28,7 +28,7 @@ class TritonInferenceClient:
         """
         self.server_url = server_url or os.getenv("TRITON_SERVER_URL", "triton-server:8001")
         self.client = None
-        self._connect()
+        # Lazy initialization - connect on first use
 
     def _connect(self):
         """Triton Server 연결"""
@@ -473,4 +473,13 @@ class TritonInferenceClient:
 
 
 # 싱글톤 인스턴스
-triton_client = TritonInferenceClient()
+# Lazy singleton - will be initialized on first use
+triton_client = None
+
+def get_triton_client():
+    """Get or create Triton client singleton"""
+    global triton_client
+    if triton_client is None:
+        triton_client = TritonInferenceClient()
+        triton_client._connect()
+    return triton_client

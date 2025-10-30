@@ -11,7 +11,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
 from shared.config.settings import settings
 from shared.schemas import JobStatus
-from core.triton_client import triton_client
+from core.triton_client import get_triton_client
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -31,6 +31,10 @@ celery_app.conf.update(
     accept_content=['json'],
     timezone='UTC',
     enable_utc=True,
+    # RabbitMQ 안정성 설정
+    task_acks_late=settings.CELERY_TASK_ACKS_LATE,
+    worker_prefetch_multiplier=settings.CELERY_WORKER_PREFETCH_MULTIPLIER,
+    task_reject_on_worker_lost=settings.CELERY_TASK_REJECT_ON_WORKER_LOST,
 )
 
 logger.info("Analysis Server: Using Triton Inference Server")
@@ -51,22 +55,40 @@ def execute_inference(job_id: str, model_name: str, data: list, config: dict, me
         결과 딕셔너리
     """
     try:
-        import redis
         import json
         import psycopg2
         from kafka import KafkaProducer
 
-        r = redis.from_url(settings.REDIS_URL, decode_responses=True)
-        r.setex(f"job:status:{job_id}", 3600, json.dumps({"status": "running"}))
-
         start_time = time.time()
+
+        # PostgreSQL에 작업 상태 업데이트 (running)
+        try:
+            conn = psycopg2.connect(
+                host=settings.POSTGRES_HOST,
+                port=settings.POSTGRES_PORT,
+                user=settings.POSTGRES_USER,
+                password=settings.POSTGRES_PASSWORD,
+                database=settings.POSTGRES_DB
+            )
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO inference_results (job_id, status, created_at)
+                VALUES (%s, %s, %s)
+                ON CONFLICT (job_id) DO UPDATE SET status = EXCLUDED.status
+            """, (job_id, "running", datetime.utcnow().isoformat()))
+            conn.commit()
+            cursor.close()
+            conn.close()
+        except Exception as e:
+            logger.warning(f"[Worker] Job {job_id}: Failed to update status to running: {e}")
 
         # ========================================
         # Triton 추론 실행 (전처리 + 추론 + 후처리 모두 포함)
         # ========================================
         logger.info(f"[Worker] Job {job_id}: Calling Triton for model '{model_name}'")
 
-        result = triton_client.infer(
+        client = get_triton_client()
+        result = client.infer(
             model_name=model_name,
             data=data,
             config=config
@@ -105,15 +127,9 @@ def execute_inference(job_id: str, model_name: str, data: list, config: dict, me
             result_data["lower_bound"] = result["lower_bound"]
 
         # ========================================
-        # 결과 저장 - Redis
-        # ========================================
-        logger.info(f"[Worker] Job {job_id}: Storing results to Redis")
-        r.setex(f"job:result:{job_id}", 3600, json.dumps(result_data))
-        r.setex(f"job:status:{job_id}", 3600, json.dumps({"status": "completed"}))
-
-        # ========================================
         # 결과 저장 - PostgreSQL
         # ========================================
+        logger.info(f"[Worker] Job {job_id}: Storing results to PostgreSQL")
         try:
             conn = psycopg2.connect(
                 host=settings.POSTGRES_HOST,
@@ -172,24 +188,38 @@ def execute_inference(job_id: str, model_name: str, data: list, config: dict, me
 
     except Exception as e:
         logger.error(f"[Worker] Job {job_id}: Error: {str(e)}")
+        # PostgreSQL에 실패 상태 업데이트
         try:
-            r.setex(f"job:status:{job_id}", 3600, json.dumps({"status": "failed", "error": str(e)}))
-        except:
-            pass
+            import psycopg2
+            import json
+            conn = psycopg2.connect(
+                host=settings.POSTGRES_HOST,
+                port=settings.POSTGRES_PORT,
+                user=settings.POSTGRES_USER,
+                password=settings.POSTGRES_PASSWORD,
+                database=settings.POSTGRES_DB
+            )
+            cursor = conn.cursor()
+            cursor.execute("""
+                UPDATE inference_results
+                SET status = %s, metadata = %s
+                WHERE job_id = %s
+            """, ("failed", json.dumps({"error": str(e)}), job_id))
+            conn.commit()
+            cursor.close()
+            conn.close()
+        except Exception as db_err:
+            logger.error(f"[Worker] Job {job_id}: Failed to update error status: {db_err}")
         raise
 
 
 class InferenceTask(Task):
-    """Celery 태스크 클래스"""
+    """Celery 태스크 클래스 - RabbitMQ에서 안정적으로 동작"""
 
     def on_failure(self, exc, task_id, args, kwargs, einfo):
         logger.error(f"Task {task_id} failed: {exc}")
-        try:
-            import redis
-            r = redis.from_url(settings.REDIS_URL, decode_responses=True)
-            r.setex(f"job:status:{task_id}", 3600, f'{{"status": "failed", "error": "{str(exc)}"}}')
-        except Exception as e:
-            logger.error(f"Failed to update job status: {e}")
+        # 실패 정보는 이미 execute_inference에서 PostgreSQL에 저장됨
+        logger.info(f"Task {task_id} failure logged to PostgreSQL")
 
     def on_success(self, retval, task_id, args, kwargs):
         logger.info(f"Task {task_id} completed successfully")
@@ -217,3 +247,129 @@ def run_inference(self, job_id: str, model_name: str, data: list, config: dict, 
 
     # Triton이 자동으로 배치 처리하므로, 직접 추론 실행
     return execute_inference(job_id, model_name, data, config, metadata)
+
+
+@celery_app.task(bind=True, base=InferenceTask, name='analysis_server.tasks.run_subsystem_inference')
+def run_subsystem_inference(self, job_id: str, subsystem: str, model_name: str, 
+                            input_data: list, input_features: list, 
+                            config: dict, metadata: dict):
+    """
+    서브시스템별 Celery 태스크 - Triton을 통한 추론 실행
+    
+    Args:
+        job_id: 전체 작업 ID (여러 서브시스템을 묶는 단위)
+        subsystem: 서브시스템 이름 ('eps', 'thermal', 'aocs', 'comm')
+        model_name: 모델 이름 ('lstm_eps', 'lstm_thermal', etc.)
+        input_data: 입력 데이터 리스트
+        input_features: 특징 이름 리스트
+        config: 모델 설정
+        metadata: 메타데이터 (satellite_id, source, trigger_reason 등)
+    
+    Returns:
+        결과 딕셔너리
+    """
+    task_id = self.request.id
+    logger.info(f"[Subsystem Task] {subsystem} inference started for job {job_id}")
+    
+    # PostgreSQL에 작업 시작 기록 (새 스키마 사용)
+    from shared.database.postgres_client import save_subsystem_inference_start, save_subsystem_inference_result
+    
+    try:
+        # 1. 작업 시작 기록
+        save_subsystem_inference_start(job_id, subsystem, model_name, input_data, 
+                                      input_features, metadata)
+        
+        # 2. Triton 추론 실행 (기존 execute_inference 재사용)
+        result = execute_inference(
+            job_id=f"{job_id}_{subsystem}",
+            model_name=model_name,
+            data=input_data,
+            config=config,
+            metadata={**metadata, 'subsystem': subsystem, 'features': input_features}
+        )
+        
+        # 3. 이상 감지 점수 계산 (간단한 예시)
+        anomaly_score = calculate_anomaly_score(input_data, result.get('predictions', []))
+        anomaly_detected = anomaly_score > 0.7  # 임계값
+        
+        # 4. 결과 저장
+        save_subsystem_inference_result(
+            job_id=job_id,
+            subsystem=subsystem,
+            model_name=model_name,
+            status='completed',
+            predictions=result.get('predictions'),
+            confidence=result.get('confidence'),
+            anomaly_score=anomaly_score,
+            anomaly_detected=anomaly_detected,
+            metrics=result.get('metrics'),
+            input_data=input_data,
+            input_features=input_features
+        )
+        
+        logger.info(f"[Subsystem Task] {subsystem} inference completed for job {job_id}")
+        
+        # Convert numpy types for JSON serialization
+        import numpy as np
+        if isinstance(anomaly_detected, np.bool_):
+            anomaly_detected = bool(anomaly_detected)
+        if isinstance(anomaly_score, (np.integer, np.floating)):
+            anomaly_score = float(anomaly_score)
+        
+        return {
+            'job_id': job_id,
+            'subsystem': subsystem,
+            'model_name': model_name,
+            'status': 'completed',
+            'anomaly_detected': anomaly_detected,
+            'anomaly_score': anomaly_score,
+            **result
+        }
+        
+    except Exception as e:
+        logger.error(f"[Subsystem Task] {subsystem} inference failed: {e}", exc_info=True)
+        
+        # 실패 기록
+        try:
+            save_subsystem_inference_result(
+                job_id=job_id,
+                subsystem=subsystem,
+                model_name=model_name,
+                status='failed',
+                error_message=str(e),
+                input_data=input_data,
+                input_features=input_features
+            )
+        except:
+            pass
+        
+        raise
+
+
+def calculate_anomaly_score(input_data: list, predictions: list) -> float:
+    """
+    간단한 이상 점수 계산
+    실제로는 더 복잡한 통계적 방법이나 ML 모델 사용
+    """
+    try:
+        if not input_data or not predictions:
+            return 0.0
+        
+        import numpy as np
+        
+        # 예측 오차 기반 이상 점수
+        input_mean = np.mean(input_data[-len(predictions):]) if len(input_data) >= len(predictions) else np.mean(input_data)
+        pred_mean = np.mean(predictions)
+        
+        # 정규화된 차이
+        if input_mean != 0:
+            diff_ratio = abs(pred_mean - input_mean) / abs(input_mean)
+            score = min(diff_ratio, 1.0)
+        else:
+            score = 0.0
+        
+        return round(score, 4)
+        
+    except Exception as e:
+        logger.error(f"Error calculating anomaly score: {e}")
+        return 0.0

@@ -1,5 +1,4 @@
 celery==5.3.6
-redis==5.0.1
 psycopg2-binary==2.9.9
 kafka-python==2.0.2
 torch==2.1.0
@@ -13,3 +12,4 @@ protobuf>=3.20.0
 grpcio>=1.41.0
 geventhttpclient>=1.4.4
 tritonclient==2.41.0
+confluent-kafka==2.6.1
